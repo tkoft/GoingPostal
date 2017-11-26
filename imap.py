@@ -3,9 +3,13 @@ from datetime import datetime
 from smtplib import SMTP_SSL
 from email.message import EmailMessage
 import zerorpc
+import os
 
 # using pipenv; use `pipenv run python imap.py` to test, I think
 # `zerorpc -j ipc:///home/work/test.run send` eg.
+# add unit tests, etc...
+
+homedir =  os.path.expanduser('~') # https://stackoverflow.com/questions/10170407/
 
 class ChumpServer:
     def send(self):
@@ -27,6 +31,7 @@ class ChumpServer:
             ))
             print(imap.select())
             typ, data = imap.search(None, 'ALL')
+            print(data)
             return data
             # should pass flags as r'(\Deleted)` eg.
         # may want to use 'Referecnes' header
@@ -34,7 +39,7 @@ class ChumpServer:
         
         
 s = zerorpc.Server(ChumpServer())
-s.bind("ipc:///home/work/test.run")
+s.bind("ipc:///{homedir}/test.run".format(homedir=homedir))
 s.run()
 
 
