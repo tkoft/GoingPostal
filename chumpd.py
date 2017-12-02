@@ -12,7 +12,7 @@ from time import sleep
 import re
 import email
 
-# fix zerorpc cli -  TODO unit test
+# add cli to unit tests
 # document things, etc. - see API design doc.
 # using pipenv; use `pipenv run python imap.py` to test, I think
 # separate SMTP/IMAP stuff - different INIs for different emails
@@ -28,7 +28,7 @@ import email
 
 # The main command-line interface.
 # Example usage: pipenv run python3 chumpd.py configs/gmail3.ini ~/test.sock
-# Then invoke with: zerorpc -j ipc://$HOME/test.sock recv
+# Then invoke with: zerorpc ipc://$HOME/test.sock recv app
 def main():
     parser = ArgumentParser()
     cfg = ConfigParser()
