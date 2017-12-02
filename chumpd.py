@@ -1,3 +1,7 @@
+# CHUMPD (server for the Chen-Hansel Ulterior Messaging Protocol)
+# Exposes a zerorpc API for building social media applications over email.
+# Why? Because we can, that's why.
+
 from imaplib import IMAP4_SSL
 from datetime import datetime
 from smtplib import SMTP_SSL, SMTP
@@ -12,23 +16,14 @@ from time import sleep
 import re
 import email
 
-# add cli to unit tests
-# document things, etc. - see API design doc.
-# using pipenv; use `pipenv run python imap.py` to test, I think
-# separate SMTP/IMAP stuff - different INIs for different emails
-# use python 3! find an ide for this...
-# try POP for some things?
-# use UID command when possible...
-# TODO: poll, send/receive on interval
-# gmail policy: don't check IMAP more than once/10min.
-# May need to IDLE - would using the 'recent' method help?
-# allowed "less secure apps" for google/yahoo
-# for yahoo: had ot move emails out of spam
-
+# - Note to self: use VS Code for autocomplete
+# - gmail policy: don't check IMAP more than once/10min.
+# - May need to IDLE - would using the 'recent' method help?
+# - allowed "less secure apps" for google/yahoo; disabled spam filters
 
 # The main command-line interface.
 # Example usage: pipenv run python3 chumpd.py configs/gmail3.ini ~/test.sock
-# Then invoke with: zerorpc ipc://$HOME/test.sock recv app
+# Then test with: zerorpc ipc://$HOME/test.sock recv app
 def main():
     parser = ArgumentParser()
     cfg = ConfigParser()
@@ -45,6 +40,7 @@ def main():
 
 # Tests.
 # Example: pipenv run python3 -m unittest chumpd.py
+# TODO: write tests for CLI
 class BasicTest(TestCase):
     def test_imap(self):
         with ChumpServer('configs/gmail3.ini') as gmail3, \
@@ -61,36 +57,38 @@ class BasicTest(TestCase):
 
 
 # The main server object
+# TODO: error handling
 class ChumpServer:
     def __init__(self, config_file):
-        self.config = ConfigParser()
-        self.config.read(config_file)
+        self._config = ConfigParser()
+        self._config.read(config_file)
         self._smtp = None
         self._imap = None
-        self.queues = defaultdict(dict)
-        self.doomed = []
+        self._queues = defaultdict(dict)
+        self._doomed = []
     def get_addr(self):
-        return self.config['email']['address']
+        return self._config['email']['address']
     def get_smtp(self):
         if self._smtp is None:
-            smtp = SMTP(self.config['smtp']['server'], self.config['smtp']['port'])
+            smtp_config = self._config['smtp']
+            smtp = SMTP(smtp_config['server'], smtp_config['port'])
             smtp.ehlo()
             smtp.starttls()
-            smtp.login(self.config['smtp']['user'], self.config['smtp']['password'])
+            smtp.login(smtp_config['user'], smtp_config['password'])
             self._smtp = smtp
         return self._smtp
     def get_imap(self):
         if self._imap is None:
-            imap = IMAP4_SSL(self.config['imap']['server'], self.config['imap']['port'])
+            imap_config = self._config['imap']
+            imap = IMAP4_SSL(imap_config['server'], imap_config['port'])
             # print("Connecting to {0}...".format(self.config['imap']['server']))
             # print(imap.capabilities)
-            # imap.login(self.config['imap']['user'], self.config['imap']['password'])
             imap.authenticate('PLAIN', lambda resp:
-                "{0}\x00{0}\x00{1}".format(self.config['imap']['user'], self.config['imap']['password']).encode()
+                "{0}\x00{0}\x00{1}".format(imap_config['user'], imap_config['password']).encode()
             )
             self._imap = imap
         return self._imap
-    def send(self, key, recipient, message): # 
+    def send(self, key, recipient, message): #
         if not isinstance(recipient, list):
             recipient = [recipient]
         recipient = [ x.get_addr()
@@ -98,14 +96,14 @@ class ChumpServer:
             else x
             for x in recipient ]
         smtp = self.get_smtp()
-        smtp.verify(self.config['smtp']['from'])
+        smtp.verify(self._config['smtp']['from'])
         msg = EmailMessage()
-        msg['From'] = '<' + self.config['smtp']['from'] + '>'
+        msg['From'] = '<' + self._config['smtp']['from'] + '>'
         msg['To'] = ', '.join(recipient)
         msg['Subject'] = key
         msg.set_content(message)
         smtp.send_message(msg)
-        # TODO: error handling
+    # TODO: poll, send/receive on interval
     def sync(self):
         # Use 'UID' command whenever possible.
         # RECENT internally does a NOP just to get a reaction
@@ -123,33 +121,29 @@ class ChumpServer:
             if isinstance(x, tuple) ]
         for (mkey, mvalue) in messages:
             message = email.message_from_string(mvalue.decode())
-            frm = message['From']
+            sender = message['From']
             uid = re.search(rb'UID\s*(\d+)', mkey).group(1).decode()
             subj = message['Subject']
+            # https://stackoverflow.com/questions/45124127/
             body = message.get_payload()
             # print('MSG: {0} {1} {2}'.format(uid, subj, body))
-            self.queues[subj][uid] = (frm, body)
+            self._queues[subj][uid] = (sender, body)
     def doom(self):
         imap = self.get_imap()
-        if len(self.doomed) > 0:
-            doomed = ','.join(self.doomed)
+        if len(self._doomed) > 0:
+            doomed = ','.join(self._doomed)
             imap.uid("STORE", doomed, '+FLAGS', '\\Deleted')
             imap.expunge()
-            self.doomed = []
+            self._doomed = []
     def recv(self, key):
         self.sync()
         ret = []
-        print('here')
-        for uid, (frm, body) in self.queues[key].items():
-            self.doomed.append(uid)
-            ret.append([frm, body])
+        for uid, (sender, body) in self._queues[key].items():
+            self._doomed.append(uid)
+            ret.append(dict(sender=sender,body=body))
         self.doom()
-        print(ret)
+        self._queues[key] = {}
         return ret
-        # imap.store('1:*', '+FLAGS.SILENT', '\\Deleted')
-        # imap.expunge()
-        # https://stackoverflow.com/questions/45124127/
-        # return [x.get_payload() for x in data]
     # For 'with' statement to work:
     def __enter__(self):
         return self
