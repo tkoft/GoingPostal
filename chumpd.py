@@ -14,6 +14,7 @@ import os
 from unittest import TestCase
 from time import sleep
 import re
+import base64
 import email
 
 # - Note to self: use VS Code for autocomplete
@@ -100,8 +101,8 @@ class ChumpServer:
         msg = EmailMessage()
         msg['From'] = '<' + self._config['smtp']['from'] + '>'
         msg['To'] = ', '.join(recipient)
-        msg['Subject'] = key
-        msg.set_content(message)
+        msg['Subject'] = base64.a85encode(str.encode(key)).decode()
+        msg.set_content(base64.a85encode(str.encode(message)).decode())
         smtp.send_message(msg)
     # TODO: poll, send/receive on interval
     def sync(self):
@@ -123,11 +124,17 @@ class ChumpServer:
             message = email.message_from_string(mvalue.decode())
             sender = message['From']
             uid = re.search(rb'UID\s*(\d+)', mkey).group(1).decode()
-            subj = message['Subject']
-            # https://stackoverflow.com/questions/45124127/
-            body = message.get_payload()
-            # print('MSG: {0} {1} {2}'.format(uid, subj, body))
-            self._queues[subj][uid] = (sender, body)
+            # print('MSG: {0} {1} {2}'.format(uid, message['Subject'], message.get_payload()))
+            try:
+                subj = base64.a85decode(message['Subject']).decode()
+                # https://stackoverflow.com/questions/45124127/
+                body = base64.a85decode(message.get_payload()).decode()
+                self._queues[subj][uid] = (sender, body)
+            except:
+                pass
+                # self._doomed.append(uid) <- in future
+                # print('Message in old format!')
+                # Do nothing - this isn't a CHUMP message
     def doom(self):
         imap = self.get_imap()
         if len(self._doomed) > 0:
