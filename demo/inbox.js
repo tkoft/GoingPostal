@@ -1,8 +1,9 @@
 
+
 (function() {
     var messagelist = null;
     var photo = null;
-    var messageDataList = null;
+	var messageDataList = null;
 
     function startup() {
 	messagelist = document.getElementById('messagelist');
@@ -40,17 +41,19 @@
 			for (var i = 0; i < res.length; i++) {
 			    var button = document.createElement("button");
 			    var label = document.createTextNode(res[i]["sender"]);
-			    
+
 			    button.appendChild(label);
 			    button.id = "button_" + i;
 			    button.style.display = "block";
-			    console.log(res[i]["sender"]);
-			    button.addEventListener('click', function(){
-				showmessage(this.id.replace("button_", ""))
-				this.remove();
+				console.log(res[i]["sender"]);
+				(function(i){
+					button.addEventListener('click', function(){
+						showmessage(this.id.replace("button_", ""), res[i]["body"])
+						this.remove();
+					}, false);
+				})(i); // closure over i
 				//messagelist.removeChild(document.getElementById(this.id));
-			    }, false);
-			    messagelist.append(button);
+			    messagelist.appendChild(button);
 			}
 		    } else {
 			messagelist.innerHTML = "No messages.";
@@ -64,7 +67,7 @@
 
     }
 
-    function showmessage(i) {
+    function showmessage(i,data) {
 	messagelist.style.display = "none";
 	photo.setAttribute('src', data);
 	photo.style.display = "block";
@@ -75,8 +78,8 @@
     }
 
     function teardown() {
-	
-	
+
+
     }
     window.addEventListener('load', startup, false);
     window.addEventListener('unload', teardown, false);
