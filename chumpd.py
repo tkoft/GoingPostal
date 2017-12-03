@@ -4,7 +4,7 @@
 
 from imaplib import IMAP4_SSL
 from datetime import datetime
-from smtplib import SMTP_SSL, SMTP
+from smtplib import SMTP_SSL, SMTP, SMTPServerDisconnected
 from email.message import EmailMessage
 from argparse import ArgumentParser
 from configparser import ConfigParser
@@ -77,6 +77,11 @@ class ChumpServer:
             smtp.starttls()
             smtp.login(smtp_config['user'], smtp_config['password'])
             self._smtp = smtp
+        try:
+            self._smtp.verify(self._config['smtp']['from'])
+        except SMTPServerDisconnected:
+            self._smtp = None
+            return self.get_smtp()
         return self._smtp
     def get_imap(self):
         if self._imap is None:
@@ -97,7 +102,7 @@ class ChumpServer:
             else x
             for x in recipient ]
         smtp = self.get_smtp()
-        smtp.verify(self._config['smtp']['from'])
+        
         msg = EmailMessage()
         msg['From'] = '<' + self._config['smtp']['from'] + '>'
         msg['To'] = ', '.join(recipient)

@@ -138,7 +138,7 @@
 	    context.drawImage(video, 0, 0, width, height);
 	    // See: https://stackoverflow.com/questions/28140147/turn-off-webcam-camera-after-using-getusermedia
 	    localstream.getTracks()[0].stop();
-	    var data = canvas.toDataURL('image/png');
+	    var data = canvas.toDataURL('image/jpeg');
 	    photo.setAttribute('src', data);
 	    photo.style.display = "inline-block";
 
