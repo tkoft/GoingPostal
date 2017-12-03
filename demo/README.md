@@ -4,11 +4,7 @@ Start chumpdt, the TCP version of chumpd since I can't get unix sockets to work 
 
 Run app with:
 
-`SOCKET=ipc://$HOME/test.sock electron .`
-
-or `./node_modules/.bin/electron .`
-(needed on my machine - Jason)
-
+`SOCKET=ipc://$HOME/test.sock ./node_modules/.bin/electron .`
 
 Note to self: I had to change `zmq.target.mk` to remove dependency on `.a` file (for using `electron-rebuild`).
 
