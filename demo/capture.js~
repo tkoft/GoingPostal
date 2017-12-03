@@ -1,7 +1,5 @@
-(function() {
-    var zerorpc = require("zerorpc");
-    //var client = new zerorpc.Client();
 
+(function() {
     // The width and height of the captured photo. We will set the
     // width to the value defined here, but the height will be
     // calculated based on the aspect ratio of the input stream.
@@ -23,6 +21,7 @@
     var photo = null;
     var startbutton = null;
     var localstream = null;
+    var localuser = null;
     
     function startup() {
 	video = document.getElementById('video');
@@ -30,10 +29,32 @@
 	canvas = document.getElementById('canvas');
 	photo = document.getElementById('photo');
 	startbutton = document.getElementById('startbutton');
+	
+	try {
+	    var zerorpc = require("zerorpc")
+	    var client = new zerorpc.Client();
+	    client.connect("tcp://127.0.0.1:1234");
+	    client.on("error", function(error) {
+		console.error("RPC client error:", error);
+		alert("CHUMP encountered an error.")
+	    })
 
-	resetCamera();
+	    client.invoke("get_addr", function(error, res, more) {
+		if (error) {
+		    console.error(error);
+		} else {
+		    localuser = res
+		    console.log("CHUMP username: " + localuser)
+		}
+	    })
+	    	    
+	    resetCamera();
+	} catch (err) {
+	    alert("Failed to connect to CHUMP daemon.")
+	}
+	
     }
-
+    
     function resetCamera() {
 	navigator.getMedia = ( navigator.getUserMedia ||
                                navigator.webkitGetUserMedia ||
@@ -78,7 +99,7 @@
 	    }
 	}, false);
 
-	startbutton.addEventListener('click', takepicture, false);
+	startbutton.addEventListener('click', takepicture, true);
 	photo.style.display = 'none';
     }
     
@@ -106,9 +127,9 @@
 	    startbutton.innerHTML = "Send";
 	}
     }
-
-    function preparesend(data) {
 	
+    function preparesend(data) {
+	alert(localuser);
     }
     
     // Set up our event listener to run the startup process

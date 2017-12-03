@@ -23,11 +23,19 @@
 
 .output {
     width: 340px;
-    display:inline-block;
+    display:inlin-block;
+}
+
+#photo {
+    display:none;
 }
 
 #startbutton {
     display:block;
+}
+
+#sendbutton {
+    display:none;
 }
 
 .contentarea {

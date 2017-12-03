@@ -1,5 +1,11 @@
 {
-    "name"    : "CrapChat",
-    "version" : "0.1.0",
-    "main"    : "main.js"
+  "name": "NotSnapChat",
+  "version": "0.1.0",
+  "main": "main.js",
+  "devDependencies": {
+    "electron-rebuild": "^1.6.0"
+  },
+  "dependencies": {
+    "electron-version": "^1.1.1"
+  }
 }
