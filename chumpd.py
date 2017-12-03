@@ -102,7 +102,7 @@ class ChumpServer:
         msg['From'] = '<' + self._config['smtp']['from'] + '>'
         msg['To'] = ', '.join(recipient)
         msg['Subject'] = base64.a85encode(str.encode(key)).decode()
-        msg.set_content(base64.a85encode(str.encode(message)).decode())
+        msg.set_content(base64.a85encode(str.encode(message),wrapcol=80).decode())
         smtp.send_message(msg)
     # TODO: poll, send/receive on interval
     def sync(self):

@@ -2,4 +2,3 @@ __pycache__
 .vscode
 *~
 demo/README.html
-demo/node_modules
