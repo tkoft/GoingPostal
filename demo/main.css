@@ -23,7 +23,7 @@
 
 .output {
     width: 340px;
-    display:inlin-block;
+    display:inline-block;
 }
 
 #photo {
@@ -34,7 +34,7 @@
     display:block;
 }
 
-#sendbutton {
+#sendcontrols {
     display:none;
 }
 

@@ -19,26 +19,37 @@
     var camera = null;
     var canvas = null;
     var photo = null;
-    var startbutton = null;
+    
+    var startcontrols = null;
+    var capturebutton = null;
+    var sendcontrols = null;
     var sendbutton = null;
+    var friendslist = null;
+
     var localstream = null;
     var localuser = null;
+    var client = null;
     
     function startup() {
 	video = document.getElementById('video');
 	camera = document.getElementById('camera');
 	canvas = document.getElementById('canvas');
 	photo = document.getElementById('photo');
-	startbutton = document.getElementById('startbutton');
-	sendbutton = document.getElementById('sendbutton');
 
-	startbutton.addEventListener('click', takepicture, false);
+	startcontrols = document.getElementById('startcontrols');
+	capturebutton = document.getElementById('capturebutton');
+	sendcontrols = document.getElementById('sendcontrols');
+	sendbutton = document.getElementById('sendbutton');
+	friendslist = document.getElementById('friendslist');
+	    
+	capturebutton.addEventListener('click', takepicture, false);
 	sendbutton.addEventListener('click', preparesend, false);
 	
 	try {
 	    var zerorpc = require("zerorpc")
-	    var client = new zerorpc.Client();
-	    client.connect("tcp://127.0.0.1:1234");
+	    client = new zerorpc.Client();
+	    client.connect("tcp://127.0.0.1:2900");
+	    console.log("connected");
 	    client.on("error", function(error) {
 		console.error("RPC client error:", error);
 		alert("CHUMP encountered an error.")
@@ -49,15 +60,16 @@
 		    console.error(error);
 		} else {
 		    localuser = res
+		    document.getElementById('tagline').innerHTML = "Welcome, " + localuser + "!";
 		    console.log("CHUMP username: " + localuser)
 		}
 	    })
-	    	    
-	    resetCamera();
 	} catch (err) {
+	    console.error(err);
 	    alert("Failed to connect to CHUMP daemon.")
 	}
 	
+	resetCamera();
     }
     
     function resetCamera() {
@@ -104,7 +116,10 @@
 	    }
 	}, false);
 
+	camera.style.display = 'block';
+	startcontrols.style.display = 'block';
 	photo.style.display = 'none';
+	sendcontrols.style.display = 'none';
     }
     
     // Capture a photo by fetching the current contents of the video
@@ -126,14 +141,56 @@
 	    photo.setAttribute('src', data);
 	    photo.style.display = "inline-block";
 
-	    startbutton.style.display = "none";
-	    sendbutton.style.display = "block";
+	    startcontrols.style.display = "none";
+	    
+	    //TODO:  Get actual friends list from CHUMP
+	    friends = ["gonepostal002@gmail.com", "gonepostal001@yahoo.com", "gonepostal003@gmail.com"];
+
+	    friendslist.innerHTML = "";
+	    for (var i = 0; i < friends.length; i++) {
+		var label = document.createElement("label");
+		var description = document.createTextNode(friends[i])
+		var checkbox = document.createElement("input");
+		
+		checkbox.type = "checkbox";
+		checkbox.name = "friendbox";
+		checkbox.value = friends[i];
+		
+		label.appendChild(checkbox);
+		label.appendChild(description);
+		label.style.display = "block";
+		
+		friendslist.appendChild(label);
+	    }
+
+	    sendcontrols.style.display = "block";
 	}
+
     }
 	
     function preparesend() {
-	console.log(photo.getAttribute('src'))
+	sendcontrols.style.display = "none";
+	var friendboxes = document.getElementsByName("friendbox");
+	var recipientslist = [];
+	for (var i = 0; i < friendboxes.length; i++) {
+	    if (friendboxes[i].checked) {
+		recipientslist.push(friendboxes[i].value);
+	    }
+	}
+
+	var data = photo.getAttribute('src');
+	client.invoke("send", "crapchat-photo", recipientslist, data, function(error, res, more) {
+	    if (error) {
+		console.error(error);
+	    } else {
+		alert("Sent!");
+	    }
+	});
+
+	resetCamera();
     }
+
+    
     
     // Set up our event listener to run the startup process
     // once loading is complete.
