@@ -13,9 +13,10 @@
 	photo.style.display = "none";
 
 	try {
+
 	    var zerorpc = require("zerorpc")
 	    client = new zerorpc.Client();
-	    client.connect("tcp://127.0.0.1:2900");
+	    client.connect(require('process').env['SOCKET']);
 	    client.on("error", function(error) {
 		console.error("RPC client error:", error);
 		alert("CHUMP encountered an error.")

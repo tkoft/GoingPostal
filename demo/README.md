@@ -4,7 +4,7 @@ Start chumpdt, the TCP version of chumpd since I can't get unix sockets to work 
 
 Run app with:
 
-`electron .`
+`SOCKET=ipc://$HOME/test.sock electron .`
 
 or `./node_modules/.bin/electron .`
 (needed on my machine - Jason)
@@ -12,4 +12,4 @@ or `./node_modules/.bin/electron .`
 
 Note to self: I had to change `zmq.target.mk` to remove dependency on `.a` file (for using `electron-rebuild`).
 
-Issue: getting occasional errors.
+Issue: Getting occasional "routing" errors from ZeroMQ. Try to get this working with unix sockets?

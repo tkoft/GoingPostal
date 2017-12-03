@@ -19,7 +19,7 @@
     var camera = null;
     var canvas = null;
     var photo = null;
-    
+
     var startcontrols = null;
     var capturebutton = null;
     var sendcontrols = null;
@@ -29,7 +29,7 @@
     var localstream = null;
     var localuser = null;
     var client = null;
-    
+
     function startup() {
 	video = document.getElementById('video');
 	camera = document.getElementById('camera');
@@ -41,14 +41,15 @@
 	sendcontrols = document.getElementById('sendcontrols');
 	sendbutton = document.getElementById('sendbutton');
 	friendslist = document.getElementById('friendslist');
-	    
+
 	capturebutton.addEventListener('click', takepicture, false);
 	sendbutton.addEventListener('click', preparesend, false);
-	
+
 	try {
 	    var zerorpc = require("zerorpc")
-	    client = new zerorpc.Client();
-	    client.connect("tcp://127.0.0.1:2900");
+		client = new zerorpc.Client();
+		client.connect(require('process').env['SOCKET']);
+	    // client.connect("tcp://127.0.0.1:2900");
 	    console.log("connected");
 	    client.on("error", function(error) {
 		console.error("RPC client error:", error);
@@ -68,10 +69,10 @@
 	    console.error(err);
 	    alert("Failed to connect to CHUMP daemon.")
 	}
-	
+
 	resetCamera();
     }
-    
+
     function resetCamera() {
 	navigator.getMedia = ( navigator.getUserMedia ||
                                navigator.webkitGetUserMedia ||
@@ -100,14 +101,14 @@
 	video.addEventListener('canplay', function(ev){
 	    if (!streaming) {
 		height = video.videoHeight / (video.videoWidth/width);
-		
+
 		// Firefox currently has a bug where the height can't be read from
 		// the video, so we will make assumptions if this happens.
-		
+
 		if (isNaN(height)) {
 		    height = width / (4/3);
 		}
-		
+
 		video.setAttribute('width', width);
 		video.setAttribute('height', height);
 		canvas.setAttribute('width', width);
@@ -121,13 +122,13 @@
 	photo.style.display = 'none';
 	sendcontrols.style.display = 'none';
     }
-    
+
     // Capture a photo by fetching the current contents of the video
     // and drawing it into a canvas, then converting that to a PNG
     // format data URL. By drawing it on an offscreen canvas and then
     // drawing that to the screen, we can change its size and/or apply
     // other changes before drawing it.
-    
+
     function takepicture() {
 	var context = canvas.getContext('2d');
 	if (width && height) {
@@ -142,7 +143,7 @@
 	    photo.style.display = "inline-block";
 
 	    startcontrols.style.display = "none";
-	    
+
 	    //TODO:  Get actual friends list from CHUMP
 	    friends = ["gonepostal002@gmail.com", "gonepostal001@yahoo.com", "gonepostal003@gmail.com"];
 
@@ -151,15 +152,15 @@
 		var label = document.createElement("label");
 		var description = document.createTextNode(friends[i])
 		var checkbox = document.createElement("input");
-		
+
 		checkbox.type = "checkbox";
 		checkbox.name = "friendbox";
 		checkbox.value = friends[i];
-		
+
 		label.appendChild(checkbox);
 		label.appendChild(description);
 		label.style.display = "block";
-		
+
 		friendslist.appendChild(label);
 	    }
 
@@ -167,7 +168,7 @@
 	}
 
     }
-	
+
     function preparesend() {
 	sendcontrols.style.display = "none";
 	var friendboxes = document.getElementsByName("friendbox");
@@ -190,8 +191,8 @@
 	resetCamera();
     }
 
-    
-    
+
+
     // Set up our event listener to run the startup process
     // once loading is complete.
     window.addEventListener('load', startup, false);

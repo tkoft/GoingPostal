@@ -23,7 +23,7 @@ import email
 # - allowed "less secure apps" for google/yahoo; disabled spam filters
 
 # The main command-line interface.
-# Example usage: pipenv run python3 chumpd.py configs/gmail3.ini ~/test.sock
+# Example usage: pipenv run python3 chumpd.py configs/gmail3.ini ipc://$HOME/test.sock
 # Then test with: zerorpc ipc://$HOME/test.sock recv app
 def main():
     parser = ArgumentParser()
@@ -31,12 +31,12 @@ def main():
     parser.add_argument('config',
         help="INI file containing IMAP/SMTP configuration")
     parser.add_argument("socket",
-        help="Location of socket to listen on")
+        help="Location of socket to listen on (e.g. ipc://$HOME/test.sock)")
     args = vars(parser.parse_args())
     config = args['config']
 
     s = zerorpc.Server(ChumpServer(config))
-    s.bind("ipc://" + args['socket'])
+    s.bind(args['socket'])
     s.run()
 
 # Tests.
