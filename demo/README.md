@@ -1,6 +1,6 @@
 Start chumpdt, the TCP version of chumpd since I can't get unix sockets to work in Electron.
 
-`python3 chumpdt configs/gmail3.ini 2900`
+`python3 chumpd configs/gmail3.ini ipc://$HOME/test.sock`
 
 Run app with:
 
