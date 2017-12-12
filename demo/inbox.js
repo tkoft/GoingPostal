@@ -60,10 +60,6 @@
 					}
 				}
 			});
-
-			client.invoke("retrieve", "crapchat-store", function(error, res, more) {
-				console.log("retrieve returned");// do nothing
-			});
 		} catch (err) {
 			console.error(err);
 			alert("Failed to connect to CHUMP daemon.")
@@ -82,8 +78,7 @@
 	}
 
 	function teardown() {
-
-
+		// todo:  store unopened messages since they're already deleted from server
 	}
 	window.addEventListener('load', startup, false);
 	window.addEventListener('unload', teardown, false);
