@@ -21,6 +21,9 @@ from time import sleep
 import re
 import base64
 import email
+import collections
+
+AgentInfo = collections.namedtuple('AgentInfo', 'agent stream')
 
 # TODO: make sure everything works via env variables, no ext. dependencies
 
@@ -63,13 +66,13 @@ class BasicTest(TestCase):
             while gmail3.get_addr() not in gmail2._tcp_off \
                 or gmail2._tcp_off[gmail3.get_addr()] == False:
                 sleep(1)
-            sleep(30) # Try to get a candidate... should show 'Adding offer'
+            # sleep(30) # Try to get a candidate... should show 'Adding offer'
             print('SHOULD SEND OFFER:')
             gmail2.send('app', gmail3, 'M2') # Send an offer
             sleep(10)
             print('SHOULD RECEIVE OFFER and SEND ANSWER:')
             print(gmail3.recv('app')) # get the offer, send an answer
-            sleep(30)
+            sleep(50)
             print('SHOULD RECEIVE ANSWER:')
             print(gmail2.recv('app')) # get the answer!
             sleep(30)
@@ -119,23 +122,57 @@ def get_sdp(agent, stream, callback):
 
 
 
+class ReaderThread(Thread):
+    def __init__(self, agentinfo):
+        super().__init__(daemon=True)
+        self.daemon = True
+        self._ai = agentinfo
+    def run(self):
+        while True:
+            print('Reading...')
+            self._ai.agent.recv(
+                self._ai.stream,
+                1,
+                None
+            )
+            # self._ai.agent.recv_messages(
+            #     self._ai.stream,
+            #     1,
+            #     None
+            # )
+
+
+
 id = 0
 
 # The main server object
+# TODO: test TCP with multicast, multiple simultaneous connections
 # TODO: error handling; see powerpoint and things we gave to Jeannie
+# FIXME: I'm going to have serious issues with how 'recv' works
+#  -- attach_recv is needed for stun and it isn't introspectable...
 class ChumpServer:
 
     def log(self, *args):
-        print(f'[{self.get_addr()}] ', *args)
+        print(f'[{self.get_addr()}]', *args)
 
     def make_agent(self, control):
-        agent = Nice.Agent.new(self._nice_thread.context, Nice.Compatibility.RFC5245)
+        # Must be 'reliable' for streaming I/O to work;
+        # non-streaming IO is broken in Python since attach_recv
+        # isn't introspectable.
+        agent = Nice.Agent.new_reliable(self._nice_thread.context, Nice.Compatibility.RFC5245)
 
         agent.controlling_mode = control
+
         agent.connect('new-selected-pair-full', self.has_chan)
+        agent.connect('component-state-changed', self.state_changed)
+
             # or should it be when component-state changes?
         stream = agent.add_stream(1)
         agent.set_stream_name(stream, 'text')
+        agent.set_port_range(stream, 1, 5000, 5999)
+
+        # self.log(agent.recv(buf, 1024))
+        ReaderThread(AgentInfo(agent=agent, stream=stream)).start()
         return (agent, stream)
 
 
@@ -187,7 +224,9 @@ class ChumpServer:
         agent, stream = self.make_agent(True)
         get_sdp(agent, stream,
             lambda x: self._tcp_off.__setitem__(recipient, x))
-        self._tcp_agents[recipient] = agent
+        self._tcp_agents[recipient] = AgentInfo(agent=agent, stream=stream)
+
+
     def send(self, key, recipients, message): #
     # do we want to allow spoofing?
         if not isinstance(recipients, list):
@@ -226,10 +265,28 @@ class ChumpServer:
     def has_chan(self, *args):
         self.log('Has chan: ', *args)
 
+    # def read_from(self, sender):
+    #     self.log('Will read!')
+    #     stuff = [0]*1024
+
+    #     agentinfo = self._tcp_agents[sender]
+    #     agentinfo.agent.recv_messages(
+    #         agentinfo.stream,
+    #         1,
+    #         13,
+    #         None
+    #     )
+        # do this on a thread somehow?
+        # agentinfo.agent.get_io_stream(agentinfo.stream, 1) \
+        #     .get_input_stream() \
+        #     .read_bytes_async(1024, 0, None,
+        #         lambda x: self.log('Did read ', x))
+        # self.log('Did read!')
 
     def send_answer(self, recipient, data, offer):
-        self.log('Sending answer to ', recipient)
+        self.log(f'Sending answer to {recipient}.')
         self.send('__answer', recipient, [offer, data])
+        # self.read_from(recipient)
 
     # TODO: poll, send/receive on interval
     # TODO: make methods private
@@ -238,24 +295,22 @@ class ChumpServer:
     # TODO: think through TCP state machine; add duplex support
 
     def handle_offer(self, sender, offer):
-        self.log('Handling offer:')
-        self.log(offer)
-
+        self.log('Handling offer; will attempt to generate answer.')
         agent, stream = self.make_agent(False)
-        self.log('Parse SDP: ', agent.parse_remote_sdp(offer))
-        get_sdp(agent, stream,
-            # FIXME: then, may need to send an 'answer' back, assumign this all eneds to be 2way
-            lambda x: self.send_answer(sender, x, offer)
-        )
-
+        self._tcp_agents[sender] = AgentInfo(agent=agent, stream=stream)
+        if agent.parse_remote_sdp(offer) < 0:
+            self.log('Failed SDP parsing!')
+        else:
+            get_sdp(agent, stream,
+                lambda x: self.send_answer(sender, x, offer)
+            )
 
     def got_answer(self,sender, answer):
         if answer[0] == self._tcp_off[sender]:
             self.log('GOT ANSWER: ', answer)
-            agent = self._tcp_agents[sender]
-            agent.connect('new-selected-pair-full', self.state_changed)
-            agent.connect('component-state-changed', self.state_changed)
-            agent.parse_remote_sdp(answer[1])
+            agentinfo = self._tcp_agents[sender]
+            agentinfo.agent.parse_remote_sdp(answer[1])
+            # self.read_from(sender)
         else:
             self.log('INVALID!')
 
