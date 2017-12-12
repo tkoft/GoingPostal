@@ -177,8 +177,10 @@ class ChumpServer:
 
         msg = email.message.Message()
         msg['Subject'] = keyEncoded
+        # Some servers are picky abour CRLF at the end of messages
+        messageEncoded += "\r\n"
         msg.set_payload(messageEncoded)
-        imap.append(draftsBoxName, None, None, str(msg).encode())
+        typ, resp = imap.append(draftsBoxName, None, None, str(msg).encode())
     
     def retrieve(self, key):
         keyEncoded = base64.a85encode(str.encode(key)).decode()
@@ -192,7 +194,7 @@ class ChumpServer:
         if count == '0' or len(msgnums) == 0 or typ == "NO":
             return '';
 
-        typ, data = imap.fetch(msgnums[0], '(UID RFC822)')
+        typ, data = imap.fetch(msgnums[0].split()[0], '(RFC822)')
         mkey, mvalue = data[0]
         message = email.message_from_string(mvalue.decode())
         return base64.a85decode(message.get_payload()).decode()
