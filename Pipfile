@@ -8,6 +8,8 @@ name = "pypi"
 [packages]
 
 zerorpc = "*"
+pygobject = "*"
+msgpack-python = "*"
 
 
 [dev-packages]

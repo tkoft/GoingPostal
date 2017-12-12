@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "0012ffde780a9061f26f23ec1324f7570a44d2792c1371171c095dd1572d0218"
+            "sha256": "6b25f52bf0725a22076cd335ea5eb3b0e12afa2d11a15e8ad26ab3748ccf731e"
         },
         "host-environment-markers": {
             "implementation_name": "cpython",
@@ -108,6 +108,18 @@
                 "sha256:1a2b19df0f03519ec7f19f826afb935b202d8979b0856c6fb3dc28955799f886"
             ],
             "version": "==0.4.8"
+        },
+        "pycairo": {
+            "hashes": [
+                "sha256:ee4c3068c048230e5ce74bb8994a024711129bde1af1d76e3276c7acd81c4357"
+            ],
+            "version": "==1.15.4"
+        },
+        "pygobject": {
+            "hashes": [
+                "sha256:61c51c01f10b27c1892c4796909f64c013d09e1caadbc091ccc7692d39415c4b"
+            ],
+            "version": "==3.27.1"
         },
         "pyzmq": {
             "hashes": [

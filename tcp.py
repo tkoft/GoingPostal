@@ -8,11 +8,18 @@
 # will need to serialize ICE candidates
 # - will I need to use `freeice` or similar?
 
+# FIXME: doesn't actually do anything with stun/turn
+# could use libnice directly via pygobject?
+#  -- one issue: libnice itself auto gets local addrs
+#  - could use: nice_agent_get_default_local_candidate ()
+
 import gi
 gi.require_version('Owr', '0.3')
+gi.require_version('Json', '1.0')
 from gi.repository import GLib
 from gi.repository import Gio
 from gi.repository import Owr
+from gi.repository import Json # requires json-glib
 
 left_session = None
 right_session = None
@@ -36,7 +43,7 @@ def got_request(instance, *args):
     right_ch.connect('on-binary-data', got_data)
     left_ch.send_binary(b'test')
     print('Hello!')
-    
+
 
 
 def all_done():
@@ -58,6 +65,9 @@ def count_done(inst, x):
 def left_done(instance):
     global left_candidates, right_session, count
     for c in left_candidates:
+        gen = Json.Generator.new()
+        gen.set_root(Json.gobject_serialize(c))
+        print(gen.to_data())
         right_session.add_remote_candidate(c)
 
 def right_done(instance):
@@ -78,10 +88,13 @@ def setup():
     global left_session, right_session
     left = Owr.TransportAgent.new(False)
     right = Owr.TransportAgent.new(True)
+
+
     left.set_local_port_range(5000, 5999)
     right.set_local_port_range(5000,5999)
-    left.add_local_address('127.0.0.1')
-    right.add_local_address('127.0.0.1')
+    left.add_helper_server(Owr.HelperServerType.STUN, "stun.l.google.com", 19302, None, None);
+    # right.add_helper_server(Owr.HelperServerType.STUN, "stun.l.google.com", 19302, None, None);
+
     left_session = Owr.DataSession.new(True)
     right_session = Owr.DataSession.new(False)
     left_session.set_property('sctp-local-port', 5000)
@@ -92,7 +105,7 @@ def setup():
     right_session.connect('on-new-candidate', right_candidate)
     left_session.connect("on-candidate-gathering-done", left_done)
     right_session.connect("on-candidate-gathering-done", right_done)
-    
+
     # g_object_set(left_session, "sctp-local-port", 5000, "sctp-remote-port", 5000, NULL);
     # g_object_set(right_session, "sctp-local-port", 5000, "sctp-remote-port", 5000, NULL);
     #     g_signal_connect(left_session, "on-new-candidate", G_CALLBACK(got_candidate), right_session);
