@@ -23,6 +23,18 @@ import base64
 import email
 import collections
 
+
+
+# WORKS!!!! RECEIVE SUCCEEDS!
+# TO INTEGRATE WITH API, CLEANUP ETC
+#  - sems to work *although* state goes to 5 sometimes???
+
+# FIXME: current issue -- sending works but recv doesn't
+# maybe related to why I have to use 'recv' (ie attach_recv
+# breaks, recv_messages also breaks...)idk
+# also maybe try making things non-reliable again?
+# FIXME: are we creating too many agents?
+
 AgentInfo = collections.namedtuple('AgentInfo', 'agent stream')
 
 # TODO: make sure everything works via env variables, no ext. dependencies
@@ -30,10 +42,12 @@ AgentInfo = collections.namedtuple('AgentInfo', 'agent stream')
 
 # FIXME: yahoo doesnt seem to be expunging properly
 # FIXME: see tcp.py - need to test NAT
+# FIXME: recv *sometimes* works
 # - Note to self: use VS Code for autocomplete
 # - gmail policy: don't check IMAP more than once/10min.
 # - May need to IDLE - would using the 'recent' method help?
 # - allowed "less secure apps" for google/yahoo; disabled spam filters
+
 
 # The main command-line interface.
 # Example usage: pipenv run python3 chumpd.py configs/gmail3.ini ipc://$HOME/test.sock
@@ -128,16 +142,23 @@ class ReaderThread(Thread):
         super().__init__(daemon=True)
         self.daemon = True
         self._ai = agentinfo
+        # help(agentinfo.agent)
     def run(self):
         # See https://phabricator.freedesktop.org/T7895
         while True:
             print('Reading...')
-            res = self._ai.agent.recv(
-                self._ai.stream,
-                1,
-                None
-            )
-            print('Did read: ', res)
+            try:
+                # *segfaults* sometimes.
+                # 'read' "works" but sometimes doesn't.
+                res = self._ai.agent.recv(
+                    self._ai.stream,
+                    1,
+                    None
+                )
+                print('Did read: ', res)
+            except:
+                print('Read err')
+                sleep(10)
             # self._ai.agent.recv_messages(
             #     self._ai.stream,
             #     1,
@@ -154,6 +175,8 @@ id = 0
 # FIXME: I'm going to have serious issues with how 'recv' works
 #  -- attach_recv is needed for stun and it isn't introspectable...
 # TODO: send and receive successfully over TCP
+#     ^ and *reliably* do so -- ti fails sometimes now with 'invalid answer'
+#     ^ may want to increase stun-pacing-timer
 
 class ChumpServer:
 
@@ -182,7 +205,23 @@ class ChumpServer:
             )
 
         # self.log(agent.recv(buf, 1024))
-        ReaderThread(AgentInfo(agent=agent, stream=stream)).start()
+        # ReaderThread(AgentInfo(agent=agent, stream=stream)).start()
+
+#          * @agent: The #NiceAgent Object
+#  * @stream_id: The ID of stream
+#  * @component_id: The ID of the component
+#  * @ctx: The Glib Mainloop Context to use for listening on the component
+#  * @func: (scope async): The callback function to be called when data is received on
+#  * the stream's component (will not be called for STUN messages that
+#  * should be handled by #NiceAgent itself)
+#  * @data: user data associated with the callback
+#  *
+        agent.attach_recv(
+            stream,
+            1,
+            self._nice_thread.context,
+            lambda *args: self.log('Got', args)
+        )
         return (agent, stream)
 
 
@@ -261,11 +300,12 @@ class ChumpServer:
                 ainf = self._tcp_conn[r]
                 self.log(
                     'Send result: ',
-                    ainf.agent.send(ainf.stream, 1, 3, 'abc')
+                    ainf.agent.send(ainf.stream, 1, 12, 'abcabcabcabc')
                 )
-            elif r in self._tcp_off and self._tcp_off[r] is not False:
-                self.log('Adding offer')
-                full_message['offer'] = self._tcp_off[r]
+            elif r in self._tcp_off:
+                if self._tcp_off[r] is not False:
+                    self.log('Adding offer')
+                    full_message['offer'] = self._tcp_off[r]
             else:
                 # prepare for TCP, but we won't hav ean offer available yet
                 # should we *block* here in case an offer becomes available?
@@ -364,7 +404,6 @@ class ChumpServer:
                 # and [1] will contain
 
                 if full_message['key'] == '__answer':
-                    self.log('We have an answer!')
                     self.got_answer(full_message['sender'], full_message['body'])
                     self._doomed.append(uid)
                 else:
