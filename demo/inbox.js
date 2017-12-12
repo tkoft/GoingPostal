@@ -72,6 +72,7 @@
 		photo.setAttribute('src', data);
 		photo.style.display = "block";
 		setTimeout(function() {
+			photo.setAttribute('src', '');
 			photo.style.display = "none";
 			messagelist.style.display = "block";
 		}, 5000);
