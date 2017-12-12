@@ -13,7 +13,6 @@
 		photo.style.display = "none";
 
 		try {
-
 			var zerorpc = require("zerorpc")
 			client = new zerorpc.Client();
 			client.connect(require('process').env['SOCKET']);
@@ -52,15 +51,19 @@
 									showmessage(this.id.replace("button_", ""), res[i]["body"])
 									this.remove();
 								}, false);
-				})(i); // closure over i
-				//messagelist.removeChild(document.getElementById(this.id));
-				messagelist.appendChild(button);
-			}
-		} else {
-			messagelist.innerHTML = "No messages.";
-		}
-	}
-});
+							})(i); // closure over i
+							//messagelist.removeChild(document.getElementById(this.id));
+							messagelist.appendChild(button);
+						}
+					} else {
+						messagelist.innerHTML = "No messages.";
+					}
+				}
+			});
+
+			client.invoke("retrieve", "crapchat-store", function(error, res, more) {
+				console.log("retrieve returned");// do nothing
+			});
 		} catch (err) {
 			console.error(err);
 			alert("Failed to connect to CHUMP daemon.")
