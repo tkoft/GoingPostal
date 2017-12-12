@@ -80,6 +80,7 @@ class BasicTest(TestCase):
             gmail2.send('app', gmail3, 'M3') # Connection established
             sleep(30)
             print(gmail3.recv('app'))  # recv over tcp
+            sleep(30)
 
     # def test_imap(self):
     #     with ChumpServer('configs/gmail3.ini') as gmail3, \
@@ -128,13 +129,15 @@ class ReaderThread(Thread):
         self.daemon = True
         self._ai = agentinfo
     def run(self):
+        # See https://phabricator.freedesktop.org/T7895
         while True:
             print('Reading...')
-            self._ai.agent.recv(
+            res = self._ai.agent.recv(
                 self._ai.stream,
                 1,
                 None
             )
+            print('Did read: ', res)
             # self._ai.agent.recv_messages(
             #     self._ai.stream,
             #     1,
@@ -150,12 +153,14 @@ id = 0
 # TODO: error handling; see powerpoint and things we gave to Jeannie
 # FIXME: I'm going to have serious issues with how 'recv' works
 #  -- attach_recv is needed for stun and it isn't introspectable...
+# TODO: send and receive successfully over TCP
+
 class ChumpServer:
 
     def log(self, *args):
         print(f'[{self.get_addr()}]', *args)
 
-    def make_agent(self, control):
+    def make_agent(self, control, callback):
         # Must be 'reliable' for streaming I/O to work;
         # non-streaming IO is broken in Python since attach_recv
         # isn't introspectable.
@@ -163,13 +168,18 @@ class ChumpServer:
 
         agent.controlling_mode = control
 
-        agent.connect('new-selected-pair-full', self.has_chan)
+
         agent.connect('component-state-changed', self.state_changed)
 
             # or should it be when component-state changes?
         stream = agent.add_stream(1)
         agent.set_stream_name(stream, 'text')
         agent.set_port_range(stream, 1, 5000, 5999)
+        ainfo = AgentInfo(agent=agent, stream=stream)
+        agent.connect('new-selected-pair-full',
+            lambda agent, m, n, c1, c2:
+                callback(ainfo)
+            )
 
         # self.log(agent.recv(buf, 1024))
         ReaderThread(AgentInfo(agent=agent, stream=stream)).start()
@@ -219,9 +229,12 @@ class ChumpServer:
             )
             self._imap = imap
         return self._imap
+
     def setup_tcp(self, recipient):
         self._tcp_off[recipient] = False # marker
-        agent, stream = self.make_agent(True)
+        agent, stream = self.make_agent(True,
+            lambda ainfo: self._tcp_conn.__setitem__(recipient, ainfo)
+        )
         get_sdp(agent, stream,
             lambda x: self._tcp_off.__setitem__(recipient, x))
         self._tcp_agents[recipient] = AgentInfo(agent=agent, stream=stream)
@@ -244,6 +257,12 @@ class ChumpServer:
         for r in recipients:
             if r in self._tcp_conn:
                 self.log('HAVE CONNECTION!')
+                # FIXME: don't end over email in this case
+                ainf = self._tcp_conn[r]
+                self.log(
+                    'Send result: ',
+                    ainf.agent.send(ainf.stream, 1, 3, 'abc')
+                )
             elif r in self._tcp_off and self._tcp_off[r] is not False:
                 self.log('Adding offer')
                 full_message['offer'] = self._tcp_off[r]
@@ -264,6 +283,7 @@ class ChumpServer:
 
     def has_chan(self, *args):
         self.log('Has chan: ', *args)
+
 
     # def read_from(self, sender):
     #     self.log('Will read!')
@@ -296,7 +316,9 @@ class ChumpServer:
 
     def handle_offer(self, sender, offer):
         self.log('Handling offer; will attempt to generate answer.')
-        agent, stream = self.make_agent(False)
+        agent, stream = self.make_agent(False,
+            lambda *args: self.log('Has channel!')
+        )
         self._tcp_agents[sender] = AgentInfo(agent=agent, stream=stream)
         if agent.parse_remote_sdp(offer) < 0:
             self.log('Failed SDP parsing!')
@@ -307,7 +329,7 @@ class ChumpServer:
 
     def got_answer(self,sender, answer):
         if answer[0] == self._tcp_off[sender]:
-            self.log('GOT ANSWER: ', answer)
+            self.log('Answer matches!')
             agentinfo = self._tcp_agents[sender]
             agentinfo.agent.parse_remote_sdp(answer[1])
             # self.read_from(sender)
