@@ -17,19 +17,22 @@ import msgpack
 import zerorpc
 import os
 from unittest import TestCase
-from time import sleep
+from time import sleep, time
 import re
 import base64
 import email
 import collections
+from operator import itemgetter, attrgetter
 
 
-
+# FIXME: broke recv from email?
 # WORKS!!!! RECEIVE SUCCEEDS!
 # TO INTEGRATE WITH API, CLEANUP ETC
 #  - sems to work *although* state goes to 5 sometimes???
 
-# FIXME: current issue -- sending works but recv doesn't
+# FIXME: not expunging on gmail either
+
+# FIXME: current issue -- sending works but recv doesn't; check both directions
 # maybe related to why I have to use 'recv' (ie attach_recv
 # breaks, recv_messages also breaks...)idk
 # also maybe try making things non-reliable again?
@@ -77,9 +80,7 @@ class BasicTest(TestCase):
             ChumpServer('configs/gmail2.ini') as gmail2:
             print('Starting...')
             gmail2.send('app', gmail3, 'M1')
-            while gmail3.get_addr() not in gmail2._tcp_off \
-                or gmail2._tcp_off[gmail3.get_addr()] == False:
-                sleep(1)
+            sleep(30)
             # sleep(30) # Try to get a candidate... should show 'Adding offer'
             print('SHOULD SEND OFFER:')
             gmail2.send('app', gmail3, 'M2') # Send an offer
@@ -92,9 +93,8 @@ class BasicTest(TestCase):
             sleep(30)
             print('SHOULD HAVE CONNECTION:')
             gmail2.send('app', gmail3, 'M3') # Connection established
-            sleep(30)
+            sleep(5)
             print(gmail3.recv('app'))  # recv over tcp
-            sleep(30)
 
     # def test_imap(self):
     #     with ChumpServer('configs/gmail3.ini') as gmail3, \
@@ -120,126 +120,159 @@ class BasicTest(TestCase):
 
 
 class NiceThread(Thread):
-    def __init__(self):
+    def __init__(self, context):
         super().__init__(daemon=True)
         self.daemon = True
+        self.context = context
     def run(self):
-        self.context = GLib.MainContext.new()
         GLib.MainLoop.new(self.context, False).run()
 
 def get_sdp(agent, stream, callback):
     agent.connect('candidate-gathering-done',
         lambda instance, _:
-            callback(instance.generate_local_sdp()),
+            [print('HERE: '), callback(instance.generate_local_sdp())],
     )
     agent.gather_candidates(stream)
-
-
-
-class ReaderThread(Thread):
-    def __init__(self, agentinfo):
-        super().__init__(daemon=True)
-        self.daemon = True
-        self._ai = agentinfo
-        # help(agentinfo.agent)
-    def run(self):
-        # See https://phabricator.freedesktop.org/T7895
-        while True:
-            print('Reading...')
-            try:
-                # *segfaults* sometimes.
-                # 'read' "works" but sometimes doesn't.
-                res = self._ai.agent.recv(
-                    self._ai.stream,
-                    1,
-                    None
-                )
-                print('Did read: ', res)
-            except:
-                print('Read err')
-                sleep(10)
-            # self._ai.agent.recv_messages(
-            #     self._ai.stream,
-            #     1,
-            #     None
-            # )
 
 
 
 id = 0
 
 # The main server object
-# TODO: test TCP with multicast, multiple simultaneous connections
+# TODO: test TCP with multicast, multiple simultaneous connections, bidiretional
 # TODO: error handling; see powerpoint and things we gave to Jeannie
 # FIXME: I'm going to have serious issues with how 'recv' works
 #  -- attach_recv is needed for stun and it isn't introspectable...
 # TODO: send and receive successfully over TCP
 #     ^ and *reliably* do so -- ti fails sometimes now with 'invalid answer'
 #     ^ may want to increase stun-pacing-timer
+#     - i think the main reliability issue is related to old offers not getting deleted. sort by timestamp?
+# TODO: lint this (typecheck?), improve/automate tests...
+# ...test TCP in apps; generally test TCP more.
+
+class TcpConnectionManager:
+    def __init__(self,chump, id):
+        self._chump = chump
+        self._id = id
+        self._offer = None
+        self._connection = False
+        self._context = GLib.MainContext.new()
+        self._nice_thread = NiceThread(self._context)
+        self._nice_thread.start()
+        self._no_provide = False
+        self._messages = []
+
+    def get_messages(self):
+        m = self._messages
+        self._messages = []
+        return m
+
+    def state_changed(self, *args):
+        # FIXME: gives state 'FAILED'
+        self.log('New state: ', *args)
+
+    def has_chan(self, *args):
+        self.log('Has chan: ', *args)
+    def log(self, *args):
+        self._chump.log(f'@[{self._id}]', *args)
+    def got_answer(self, answer):
+        if answer[0] == self._offer:
+            self.log('Answer matches!')
+            self._agent.parse_remote_sdp(answer[1])
+            # self.read_from(sender)
+        else:
+            self.log('INVALID!')
+    def make_agent(self, control, callback):
+        agent = Nice.Agent.new_reliable(self._context, Nice.Compatibility.RFC5245)
+        agent.controlling_mode = control
+
+        # FIXME: shows too many offers
+        # agent.connect('component-state-changed', self.state_changed)
+
+            # or should it be when component-state changes?
+        stream = agent.add_stream(1)
+        agent.set_stream_name(stream, 'text')
+        agent.set_port_range(stream, 1, 5000, 5999)
+
+        agent.connect('new-selected-pair-full',
+            lambda agent, m, n, c1, c2:
+                callback()
+            )
+        agent.attach_recv(
+            stream,
+            1,
+            self._nice_thread.context,
+            lambda a, m, n, sz, buf: self._messages.append(buf)
+        )
+        self._agent = agent
+        self._stream = stream
+    def _set_offer(self,x):
+        self.log('Made an offer!')
+        self._offer = x
+    def _got_connection(self):
+        # self.log('Connected', x)
+        self._connection = True
+    def setup(self, offer):
+        if offer is None and self._offer is None:
+            self._offer = True
+            self.make_agent(True, self._got_connection)
+            get_sdp(self._agent, self._stream, self._set_offer)
+        elif (offer is not None) and (self._offer is None) and (not self._connection):
+            self._no_provide = True
+            # TODO make sure we're not in the progres of making an answer; generally consider state machine here
+            self._offer = offer
+            self.make_agent(False, self._got_connection)
+            if self._agent.parse_remote_sdp(offer) < 0:
+                self.log('Failed SDP parsing!')
+            else:
+                self.log('Getting SDP...')
+                get_sdp(self._agent, self._stream,
+                    lambda x: self._chump.send_answer(self._id, x, offer)
+                )
+    def make_offer(self):
+        if self._offer is None:
+            self.setup(None)
+            return None
+        elif self._offer is True or self._no_provide:
+            return None
+        else:
+            # TODO: don't send offer if we're the answerer
+            return self._offer
+    def try_send(self, message):
+        if self._connection:
+            # FIXME: don't ALSO send over email in this case
+            mstr = message# .decode('utf-8') # will unicode really work here?
+            self.log(
+                'Send result: ',
+                self._agent.send(self._stream, 1, len(mstr), mstr)
+            )
+            return True
+        else:
+            return False
+
+
+class TcpDictionary(collections.defaultdict):
+    def __init__(self, chump):
+        super().__init__()
+        self._chump = chump
+    def __missing__(self, id):
+        print('MAKING: ', id)
+        self[id] = TcpConnectionManager(self._chump, id)
+        return self[id]
 
 class ChumpServer:
 
     def log(self, *args):
         print(f'[{self.get_addr()}]', *args)
 
-    def make_agent(self, control, callback):
-        # Must be 'reliable' for streaming I/O to work;
-        # non-streaming IO is broken in Python since attach_recv
-        # isn't introspectable.
-        agent = Nice.Agent.new_reliable(self._nice_thread.context, Nice.Compatibility.RFC5245)
-
-        agent.controlling_mode = control
-
-
-        agent.connect('component-state-changed', self.state_changed)
-
-            # or should it be when component-state changes?
-        stream = agent.add_stream(1)
-        agent.set_stream_name(stream, 'text')
-        agent.set_port_range(stream, 1, 5000, 5999)
-        ainfo = AgentInfo(agent=agent, stream=stream)
-        agent.connect('new-selected-pair-full',
-            lambda agent, m, n, c1, c2:
-                callback(ainfo)
-            )
-
-        # self.log(agent.recv(buf, 1024))
-        # ReaderThread(AgentInfo(agent=agent, stream=stream)).start()
-
-#          * @agent: The #NiceAgent Object
-#  * @stream_id: The ID of stream
-#  * @component_id: The ID of the component
-#  * @ctx: The Glib Mainloop Context to use for listening on the component
-#  * @func: (scope async): The callback function to be called when data is received on
-#  * the stream's component (will not be called for STUN messages that
-#  * should be handled by #NiceAgent itself)
-#  * @data: user data associated with the callback
-#  *
-        agent.attach_recv(
-            stream,
-            1,
-            self._nice_thread.context,
-            lambda *args: self.log('Got', args)
-        )
-        return (agent, stream)
-
-
     def __init__(self, config_file):
-        global id
         self._config = ConfigParser()
         self._config.read(config_file)
         self._smtp = None
         self._imap = None
         self._queues = defaultdict(dict)
         self._doomed = []
-        self._tcp_off = {}
-        self._tcp_conn = {}
-        self._tcp_ans = {}
-        self._tcp_agents = {}
-        self._nice_thread = NiceThread()
-        self._nice_thread.start()
-        self._id = id
-        id += 1
+        self._tcp = TcpDictionary(self)
     def get_addr(self):
         return self._config['email']['address']
     def get_smtp(self):
@@ -268,16 +301,6 @@ class ChumpServer:
             self._imap = imap
         return self._imap
 
-    def setup_tcp(self, recipient):
-        self._tcp_off[recipient] = False # marker
-        agent, stream = self.make_agent(True,
-            lambda ainfo: self._tcp_conn.__setitem__(recipient, ainfo)
-        )
-        get_sdp(agent, stream,
-            lambda x: self._tcp_off.__setitem__(recipient, x))
-        self._tcp_agents[recipient] = AgentInfo(agent=agent, stream=stream)
-
-
     def send(self, key, recipients, message): #
     # do we want to allow spoofing?
         if not isinstance(recipients, list):
@@ -290,57 +313,35 @@ class ChumpServer:
         full_message = {
             'key': key,
             'sender': self._config['email']['address'],
-            'body': message
+            'body': message,
+            'timestamp': int(time()),
+            'protocol': 'email'
         }
+
+        new_recipients = []
         for r in recipients:
-            if r in self._tcp_conn:
-                self.log('HAVE CONNECTION!')
-                # FIXME: don't end over email in this case
-                ainf = self._tcp_conn[r]
-                self.log(
-                    'Send result: ',
-                    ainf.agent.send(ainf.stream, 1, 12, 'abcabcabcabc')
-                )
-            elif r in self._tcp_off:
-                if self._tcp_off[r] is not False:
-                    self.log('Adding offer')
-                    full_message['offer'] = self._tcp_off[r]
+            inner_dict = full_message.copy()
+            inner_dict['protocol'] = 'tcp'
+            encoded = base64.a85encode(msgpack.packb(inner_dict, use_bin_type=True),wrapcol=80).decode()
+            if self._tcp[r].try_send(encoded):
+                self.log('Trying to send succeeded...')
+                # ..and don't append to new_recipients
+                pass
             else:
-                # prepare for TCP, but we won't hav ean offer available yet
-                # should we *block* here in case an offer becomes available?
-                self.setup_tcp(r)
-        msg = EmailMessage()
-        msg['From'] = '<' + self._config['smtp']['from'] + '>'
-        msg['To'] = ', '.join(recipients)
-        msg['Subject'] = base64.a85encode(str.encode(key)).decode()
-        msg.set_content(base64.a85encode(msgpack.packb(full_message),wrapcol=80).decode())
-        smtp.send_message(msg)
-
-    def state_changed(self, *args):
-        # FIXME: gives state 'FAILED'
-        self.log('New state: ', *args)
-
-    def has_chan(self, *args):
-        self.log('Has chan: ', *args)
-
-
-    # def read_from(self, sender):
-    #     self.log('Will read!')
-    #     stuff = [0]*1024
-
-    #     agentinfo = self._tcp_agents[sender]
-    #     agentinfo.agent.recv_messages(
-    #         agentinfo.stream,
-    #         1,
-    #         13,
-    #         None
-    #     )
-        # do this on a thread somehow?
-        # agentinfo.agent.get_io_stream(agentinfo.stream, 1) \
-        #     .get_input_stream() \
-        #     .read_bytes_async(1024, 0, None,
-        #         lambda x: self.log('Did read ', x))
-        # self.log('Did read!')
+                offer = self._tcp[r].make_offer()
+                if offer is not None:
+                    self.log(f'Providing offer... {full_message["timestamp"]}')
+                    full_message['offer'] = offer
+                new_recipients.append(r)
+        recipients = new_recipients
+        if len(recipients) > 0:
+            msg = EmailMessage()
+            msg['From'] = '<' + self._config['smtp']['from'] + '>'
+            msg['To'] = ', '.join(recipients)
+            msg['Subject'] = base64.a85encode(str.encode(key)).decode()
+            encoded = base64.a85encode(msgpack.packb(full_message, use_bin_type=True),wrapcol=80).decode()
+            msg.set_content(encoded)
+            smtp.send_message(msg)
 
     def send_answer(self, recipient, data, offer):
         self.log(f'Sending answer to {recipient}.')
@@ -353,30 +354,9 @@ class ChumpServer:
     #    -> don't use nice_agent_recv_messages
     # TODO: think through TCP state machine; add duplex support
 
-    def handle_offer(self, sender, offer):
-        self.log('Handling offer; will attempt to generate answer.')
-        agent, stream = self.make_agent(False,
-            lambda *args: self.log('Has channel!')
-        )
-        self._tcp_agents[sender] = AgentInfo(agent=agent, stream=stream)
-        if agent.parse_remote_sdp(offer) < 0:
-            self.log('Failed SDP parsing!')
-        else:
-            get_sdp(agent, stream,
-                lambda x: self.send_answer(sender, x, offer)
-            )
-
-    def got_answer(self,sender, answer):
-        if answer[0] == self._tcp_off[sender]:
-            self.log('Answer matches!')
-            agentinfo = self._tcp_agents[sender]
-            agentinfo.agent.parse_remote_sdp(answer[1])
-            # self.read_from(sender)
-        else:
-            self.log('INVALID!')
 
     def sync(self):
-        # Use 'UID' command whenever possible.
+        # Use 'UID' command whenever possible.        id += 1
         # RECENT internally does a NOP just to get a reaction
         # We can use \\Recent to ensure that no one else has seen!
         imap = self.get_imap()
@@ -390,48 +370,70 @@ class ChumpServer:
         messages = [ x
             for x in data
             if isinstance(x, tuple) ]
+        offers = []
         for (mkey, mvalue) in messages:
             message = email.message_from_string(mvalue.decode())
             uid = re.search(rb'UID\s*(\d+)', mkey).group(1).decode()
             # self.log('MSG: {0} {1} {2}'.format(uid, message['Subject'], message.get_payload()))
+            full_message = None
             try:
                 subj = base64.a85decode(message['Subject']).decode()
                 # https://stackoverflow.com/questions/45124127/
                 full_message = msgpack.unpackb(base64.a85decode(message.get_payload()), encoding='utf-8')
-                # self.log(full_message)
-                # TODO: verify that the answer has [0] as current outstanding offer
-                # and [1] will contain
-
+            except:
+                # Just ignore seriously malformed messages
+                pass
+            # self.log('Msg: ', uid, full_message)
+            if full_message is  not None and 'key' in full_message:
                 if full_message['key'] == '__answer':
-                    self.got_answer(full_message['sender'], full_message['body'])
+                    self.log('Got an answer of some sort...')
+                    self._tcp[full_message['sender']].got_answer(full_message['body'])
                     self._doomed.append(uid)
                 else:
-                    self._queues[subj][uid] = full_message
-                    if full_message['offer'] and not full_message['sender'] in self._tcp_off  and not full_message['sender'] in self._tcp_conn:
-                        self.handle_offer(full_message['sender'], full_message['offer'])
-            except:
-                # Just ignore malformed messages
-                pass
-                # self._doomed.append(uid) <- in future
-                # self.log('Message in old format!')
-                # Do nothing - this isn't a CHUMP message
+                    self._queues[full_message['key']][uid] = full_message
+                    if 'offer' in full_message:
+                        offers.append(full_message)
+        # always look at more recent offers first, since they
+        # have a greater likelihood of success.
+        offers.sort(key=
+            lambda x: (x['timestamp'] if ('timestamp' in x) else 0)
+        )
+        offers.reverse()
+        for offer in offers:
+            self.log(f'Got offer')
+            if 'timestamp' in offer:
+                self.log(f'With stamp: {offer["timestamp"]}')
+            self._tcp[offer['sender']].setup(offer['offer'])
+            # self.log('Message in old format!')
+            # Do nothing - this isn't a CHUMP message
     def doom(self):
         imap = self.get_imap()
         if len(self._doomed) > 0:
             doomed = ','.join(self._doomed)
             self.log('Dooming: ', doomed)
             self.log(imap.uid("STORE", doomed, '+FLAGS', '\\Deleted'))
-            self.log(imap.expunge())
+            self.log(imap.uid("EXPUNGE", doomed))
             self._doomed = []
     def recv(self, key):
         self.sync()
-        ret = []
+        mq = []
+        for k, val in self._tcp.items():
+            # TODO filter by key, unbase85 and unmsgpack
+            # we do need to base85 b/c of unicode-y issues (workaround somehow?)
+            mq.extend([
+                 msgpack.unpackb(base64.a85decode(message), encoding='utf-8')
+                 for message
+                 in val.get_messages()
+            ])
+        # TODO: use a 'real' debugger?
+        # self.log('Q', self._queues)
         for uid, full_message in self._queues[key].items():
+            # self.log('Message', full_message)
             self._doomed.append(uid)
-            ret.append(dict(sender=full_message['sender'],body=full_message['body']))
+            mq.append(dict(sender=full_message['sender'],body=full_message['body']))
         self.doom()
         self._queues[key] = {}
-        return ret
+        return mq
 
     def store(self, key, message):
         keyEncoded = base64.a85encode(str.encode(key)).decode()
@@ -455,7 +457,7 @@ class ChumpServer:
         messageEncoded += "\r\n"
         msg.set_payload(messageEncoded)
         typ, resp = imap.append(draftsBoxName, None, None, str(msg).encode())
-    
+
     def retrieve(self, key):
         keyEncoded = base64.a85encode(str.encode(key)).decode()
 
