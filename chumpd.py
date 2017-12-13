@@ -127,9 +127,6 @@ class NiceThread(Thread):
         self.context = GLib.MainContext.new()
         GLib.MainLoop.new(self.context, False).run()
 
-            gmail2.store('app-store', "HELLO THIS IS TEST STORE DATA")
-
-
 def get_sdp(agent, stream, callback):
     agent.connect('candidate-gathering-done',
         lambda instance, _:

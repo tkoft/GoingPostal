@@ -14,7 +14,7 @@
 
 		try {
 			var zerorpc = require("zerorpc")
-			client = new zerorpc.Client();
+			client = new zerorpc.Client()
 			client.connect(require('process').env['SOCKET']);
 			client.on("error", function(error) {
 				console.error("RPC client error:", error);
