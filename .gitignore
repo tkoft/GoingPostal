@@ -4,3 +4,4 @@ __pycache__
 demo/README.html
 go-natty
 openwebrtc
+Pipfile.lock
