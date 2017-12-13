@@ -127,6 +127,8 @@ class NiceThread(Thread):
         self.context = GLib.MainContext.new()
         GLib.MainLoop.new(self.context, False).run()
 
+            gmail2.store('app-store', "HELLO THIS IS TEST STORE DATA")
+
 
 def get_sdp(agent, stream, callback):
     agent.connect('candidate-gathering-done',
@@ -433,6 +435,48 @@ class ChumpServer:
         self.doom()
         self._queues[key] = {}
         return ret
+
+    def store(self, key, message):
+        keyEncoded = base64.a85encode(str.encode(key)).decode()
+        messageEncoded = base64.a85encode(str.encode(message),wrapcol=80).decode()
+
+        imap = self.get_imap();
+        resp, data = imap.list('""', '*Draft*')
+        draftsBoxName = data[0].split()[3];
+        typ, count = imap.select(draftsBoxName);
+
+        # Delete old draft if it exists
+        typ, msgnums = imap.search(None, '(SUBJECT "' + keyEncoded + '")')
+        if len(msgnums) > 0:
+            for num in msgnums[0].split():
+                imap.store(num, '+FLAGS', '\\Deleted')
+        imap.expunge()
+
+        msg = email.message.Message()
+        msg['Subject'] = keyEncoded
+        # Some servers are picky abour CRLF at the end of messages
+        messageEncoded += "\r\n"
+        msg.set_payload(messageEncoded)
+        typ, resp = imap.append(draftsBoxName, None, None, str(msg).encode())
+    
+    def retrieve(self, key):
+        keyEncoded = base64.a85encode(str.encode(key)).decode()
+
+        imap = self.get_imap();
+        resp, data = imap.list('""', '*Draft*')
+        draftsBoxName = data[0].split()[3];
+        typ, count = imap.select(draftsBoxName);
+        typ, msgnums = imap.search(None, '(SUBJECT "' + keyEncoded + '")')
+
+        if count == '0' or len(msgnums) == 0 or typ == "NO":
+            return '';
+
+        typ, data = imap.fetch(msgnums[0].split()[0], '(RFC822)')
+        mkey, mvalue = data[0]
+        message = email.message_from_string(mvalue.decode())
+        return base64.a85decode(message.get_payload()).decode()
+
+
     # For 'with' statement to work:
     def __enter__(self):
         return self
