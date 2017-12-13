@@ -56,9 +56,6 @@ class BasicTest(TestCase):
             print(gmail3.recv('app'))
             print(yahoo1.recv('app'))
 
-            gmail2.store('app-store', "HELLO THIS IS TEST STORE DATA")
-
-
 # The main server object
 # TODO: error handling
 class ChumpServer:
@@ -151,7 +148,7 @@ class ChumpServer:
             self._doomed = []
     def recv(self, key):
         self.sync()
-        ret = []
+        ret = []    
         for uid, (sender, body) in self._queues[key].items():
             self._doomed.append(uid)
             ret.append(dict(sender=sender,body=body))
