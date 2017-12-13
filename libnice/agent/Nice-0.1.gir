@@ -335,6 +335,32 @@ The returned object must be freed with g_object_unref()</doc>
           </parameter>
         </parameters>
       </constructor>
+      <constructor name="new_full"
+                   c:identifier="nice_agent_new_full"
+                   version="0.1.15">
+        <doc xml:space="preserve">Create a new #NiceAgent with parameters that must be be defined at
+construction time.
+The returned object must be freed with g_object_unref()
+&lt;para&gt; See also: #NiceNominationMode and #NiceAgentOption&lt;/para&gt;</doc>
+        <return-value transfer-ownership="full">
+          <doc xml:space="preserve">The new agent GObject</doc>
+          <type name="Agent" c:type="NiceAgent*"/>
+        </return-value>
+        <parameters>
+          <parameter name="ctx" transfer-ownership="none">
+            <doc xml:space="preserve">The Glib Mainloop Context to use for timers</doc>
+            <type name="GLib.MainContext" c:type="GMainContext*"/>
+          </parameter>
+          <parameter name="compat" transfer-ownership="none">
+            <doc xml:space="preserve">The compatibility mode of the agent</doc>
+            <type name="Compatibility" c:type="NiceCompatibility"/>
+          </parameter>
+          <parameter name="flags" transfer-ownership="none">
+            <doc xml:space="preserve">Flags to set the properties</doc>
+            <type name="AgentOption" c:type="NiceAgentOption"/>
+          </parameter>
+        </parameters>
+      </constructor>
       <constructor name="new_reliable"
                    c:identifier="nice_agent_new_reliable"
                    version="0.0.11">
@@ -402,9 +428,7 @@ returned stream ID is guaranteed to be positive on success.</doc>
           </parameter>
         </parameters>
       </method>
-      <method name="attach_recv"
-              c:identifier="nice_agent_attach_recv"
-              introspectable="0">
+      <method name="attach_recv" c:identifier="nice_agent_attach_recv">
         <doc xml:space="preserve">Attaches the stream's component's sockets to the Glib Mainloop Context in
 order to be notified whenever data becomes available for a component,
 and to enable #NiceAgent to receive STUN messages (during the
@@ -439,7 +463,10 @@ function to unset @func, otherwise data loss of received packets may occur.</doc
             <doc xml:space="preserve">The Glib Mainloop Context to use for listening on the component</doc>
             <type name="GLib.MainContext" c:type="GMainContext*"/>
           </parameter>
-          <parameter name="func" transfer-ownership="none" closure="4">
+          <parameter name="func"
+                     transfer-ownership="none"
+                     scope="async"
+                     closure="4">
             <doc xml:space="preserve">The callback function to be called when data is received on
 the stream's component (will not be called for STUN messages that
 should be handled by #NiceAgent itself)</doc>
@@ -1863,6 +1890,13 @@ candidates.
                 transfer-ownership="none">
         <type name="guint" c:type="guint"/>
       </property>
+      <property name="nomination-mode"
+                introspectable="0"
+                writable="1"
+                construct-only="1"
+                transfer-ownership="none">
+        <type/>
+      </property>
       <property name="proxy-ip" writable="1" transfer-ownership="none">
         <type name="utf8" c:type="gchar*"/>
       </property>
@@ -1884,7 +1918,25 @@ candidates.
                 transfer-ownership="none">
         <type name="gboolean" c:type="gboolean"/>
       </property>
+      <property name="stun-initial-timeout"
+                writable="1"
+                construct="1"
+                transfer-ownership="none">
+        <type name="guint" c:type="guint"/>
+      </property>
+      <property name="stun-max-retransmissions"
+                writable="1"
+                construct="1"
+                transfer-ownership="none">
+        <type name="guint" c:type="guint"/>
+      </property>
       <property name="stun-pacing-timer"
+                writable="1"
+                construct="1"
+                transfer-ownership="none">
+        <type name="guint" c:type="guint"/>
+      </property>
+      <property name="stun-reliable-timeout"
                 writable="1"
                 construct="1"
                 transfer-ownership="none">
@@ -2065,6 +2117,27 @@ candidates.
         <type name="GObject.ObjectClass" c:type="GObjectClass"/>
       </field>
     </record>
+    <bitfield name="AgentOption" version="0.1.15" c:type="NiceAgentOption">
+      <doc xml:space="preserve">These are options that can be passed to nice_agent_new_full(). They set
+various properties on the agent. Not including them sets the property to
+the other value.</doc>
+      <member name="regular_nomination"
+              value="1"
+              c:identifier="NICE_AGENT_OPTION_REGULAR_NOMINATION">
+        <doc xml:space="preserve">Enables regular nomination, default
+ is aggrssive mode (see #NiceNominationMode).</doc>
+      </member>
+      <member name="reliable"
+              value="2"
+              c:identifier="NICE_AGENT_OPTION_RELIABLE">
+        <doc xml:space="preserve">Enables reliable mode, possibly using PseudoTCP, *  see nice_agent_new_reliable().</doc>
+      </member>
+      <member name="lite_mode"
+              value="4"
+              c:identifier="NICE_AGENT_OPTION_LITE_MODE">
+        <doc xml:space="preserve">Enable lite mode</doc>
+      </member>
+    </bitfield>
     <callback name="AgentRecvFunc" c:type="NiceAgentRecvFunc">
       <doc xml:space="preserve">Callback function when data is received on a component</doc>
       <return-value transfer-ownership="none">
@@ -2249,6 +2322,26 @@ of type %NICE_CANDIDATE_TYPE_RELAYED</doc>
             <doc xml:space="preserve">The candidate to copy</doc>
             <type name="Candidate" c:type="const NiceCandidate*"/>
           </instance-parameter>
+        </parameters>
+      </method>
+      <method name="equal_target"
+              c:identifier="nice_candidate_equal_target"
+              version="0.1.15">
+        <doc xml:space="preserve">Verifies that the candidates point to the same place, meaning they have
+the same transport and the same address. It ignores all other aspects.</doc>
+        <return-value transfer-ownership="none">
+          <doc xml:space="preserve">%TRUE if the candidates point to the same place</doc>
+          <type name="gboolean" c:type="gboolean"/>
+        </return-value>
+        <parameters>
+          <instance-parameter name="candidate1" transfer-ownership="none">
+            <doc xml:space="preserve">A candidate</doc>
+            <type name="Candidate" c:type="const NiceCandidate*"/>
+          </instance-parameter>
+          <parameter name="candidate2" transfer-ownership="none">
+            <doc xml:space="preserve">A candidate</doc>
+            <type name="Candidate" c:type="const NiceCandidate*"/>
+          </parameter>
         </parameters>
       </method>
       <method name="free" c:identifier="nice_candidate_free">
@@ -2446,6 +2539,27 @@ transmitted the message, or %NULL</doc>
         <type name="gsize" c:type="gsize"/>
       </field>
     </record>
+    <enumeration name="NominationMode"
+                 version="0.1.15"
+                 c:type="NiceNominationMode">
+      <doc xml:space="preserve">An enum to specity the kind of nomination mode to use by
+the agent, as described in RFC 5245. Two modes exists,
+regular and aggressive. They differ by the way the controlling
+agent chooses to put the USE-CANDIDATE attribute in its STUN
+messages. The aggressive mode is supposed to nominate a pair
+faster, than the regular mode, potentially causing the nominated
+pair to change until the connection check completes.</doc>
+      <member name="regular"
+              value="0"
+              c:identifier="NICE_NOMINATION_MODE_REGULAR">
+        <doc xml:space="preserve">Regular nomination mode</doc>
+      </member>
+      <member name="aggressive"
+              value="1"
+              c:identifier="NICE_NOMINATION_MODE_AGGRESSIVE">
+        <doc xml:space="preserve">Aggressive nomination mode</doc>
+      </member>
+    </enumeration>
     <record name="OutputMessage" c:type="NiceOutputMessage" version="0.1.5">
       <doc xml:space="preserve">Represents a single message to transmit on the network. For
 reliable connections, this is essentially just an array of
