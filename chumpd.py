@@ -128,11 +128,7 @@ class BasicTest(TestCase):
             sleep(10)
             print('SHOULD RECEIVE OFFER and SEND ANSWER:')
             # TODO: beow recv prob pointles snow
-            # printTable(gmail4.recv('app')) # get the offer, send an answer
-            sleep(50)
-            print('SHOULD RECEIVE ANSWER:')
-            # printTable(gmail1.recv('app')) # get the answer!
-            sleep(30)
+            sleep(80)
             print('SHOULD HAVE CONNECTION:')
             gmail1.send('app', gmail4, 'M3') # Connection established
             sleep(1)
@@ -144,7 +140,7 @@ class BasicTest(TestCase):
             printTable(gmail1.recv('app'))  # recv over tcp
             gmail1.send('app', gmail4, 'M3D') # Connection established
             gmail1.send('app', gmail4, 'M3E') # Connection established
-            sleep(1)
+            sleep(5)
             printTable(gmail4.recv('app'))  # recv over tcp
 
     # def test_imap(self):
