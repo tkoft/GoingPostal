@@ -49,3 +49,8 @@
     width: 50%;
     margin: 0 auto;
 }
+
+#messagelist {
+    display:inline-block;
+    text-align: center;
+}

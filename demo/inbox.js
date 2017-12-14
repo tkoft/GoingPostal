@@ -45,6 +45,7 @@
 				if (error) {
 					console.error(error);
 				} else if (res.length > 0) {
+					console.log(res)
 					messageDataList = messageDataList.concat(res);
 				}
 				updateMessages()
@@ -89,7 +90,7 @@
 		setTimeout(function() {
 			photo.setAttribute('src', '');
 			photo.style.display = "none";
-			messagelist.style.display = "block";
+			messagelist.style.display = "inline-block";
 		}, 5000);
 	}
 
