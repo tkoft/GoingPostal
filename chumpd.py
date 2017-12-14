@@ -2,9 +2,6 @@
 # Exposes a zerorpc API for building social media applications over email.
 # Why? Because we can, that's why.
 
-
-# use 'pipenv run code' for mypy?
-
 import gi
 gi.require_version('Nice', '0.1')
 from imaplib import IMAP4_SSL
@@ -29,50 +26,31 @@ import email
 import collections
 from operator import itemgetter, attrgetter
 import struct
+from tcp_support import TcpDictionary
 
-# note: you need pygobject working,
-# and Sony Ericsson's openwebrtc installed; this has to be compiled with introspection.
-# i'm using the latest version of this from git.
-# see: https://github.com/EricssonResearch/openwebrtc/issues/394#issuecomment-218276247
-    # TODO: poll, send/receive on interval
-    # TODO: make methods private
 
-# TODO: actually test this on separate devices, with a nat;
-# will need to serialize ICE candidates
-# - will I need to use `freeice` or similar?
-
-# FIXME: doesn't actually do anything with stun/turn
-# could use libnice directly via pygobject?
-#  -- one issue: libnice itself auto gets local addrs
-#  - could use: nice_agent_get_default_local_candidate ()
-
-# which change to agent.h fixed stuff?
-
+# push asap once I unbreak things
+# TODO: make methods private
+# FIXME: cf checlist
 # FIXME: broke recv from email?
-# WORKS!!!! RECEIVE SUCCEEDS!
-# TO INTEGRATE WITH API, CLEANUP ETC
-#  - sems to work *although* state goes to 5 sometimes???
-
-# FIXME: not expunging on gmail either
-
+# FIXME: Gary having issues with multiple recv's
 # FIXME: current issue -- sending works but recv doesn't; check both directions
-# maybe related to why I have to use 'recv' (ie attach_recv
-# breaks, recv_messages also breaks...)idk
-# also maybe try making things non-reliable again?
-# FIXME: are we creating too many agents?
+# TODO: try UDP instead?
+# TODO: test TCP with multicasting, NATs (use STUN)
+# TODO: see powerpoint and things we gave to Jeannie
+# TODO: TCP is unreliable, slow; get it working with CrapChat.
+# TODO make sleep and verbosity configurable
+# FIXME: n2s: can't 'send to yourself' over tcp
+# TODO: m3d/m3e below sometimes fails; maybe hooking wrong event on agent for detecting complete connection
+# TODO: write tests for CLI, and various special cases; speed up testing
+# TODO: make build/setup easy
+# NOTE: allowed "less secure apps" for google/yahoo; disabled spam filters
 
-AgentInfo = collections.namedtuple('AgentInfo', 'agent stream')
-
-# TODO: make sure everything works via env variables, no ext. dependencies
 
 
-# FIXME: yahoo doesnt seem to be expunging properly
-# FIXME: see tcp.py - need to test NAT
-# FIXME: recv *sometimes* works - (why not always? TTL issue?)
-# - Note to self: use VS Code for autocomplete
-# - gmail policy: don't check IMAP more than once/10min.
-# - May need to IDLE - would using the 'recent' method help?
-# - allowed "less secure apps" for google/yahoo; disabled spam filters
+
+# Tests.
+# Example: pipenv run python3 -m unittest chumpd.py
 
 # https://stackoverflow.com/questions/17330139/python-printing-a-dictionary-as-a-horizontal-table-with-headers
 def printTable(myDict, colList=None):
@@ -109,11 +87,6 @@ def main():
     s.bind(args['socket'])
     s.run()
 
-# TODO: deduplicate TCPs so we don't hava emultiple overlapping negotations
-
-# Tests.
-# Example: pipenv run python3 -m unittest chumpd.py
-# TODO: write tests for CLI, and various special cases; speed this up
 class BasicTest(TestCase):
     def test_tcp(self):
         with ChumpServer('configs/gmail4.ini') as gmail4, \
@@ -121,13 +94,12 @@ class BasicTest(TestCase):
             print('Starting...')
             gmail1.send('app', gmail4, 'M1')
             sleep(30)
-            # FIXME: n2s: can't 'send to yourself' over tcp
-            # sleep(30) # Try to get a candidate... should show 'Adding offer'
             print('SHOULD SEND OFFER:')
             gmail1.send('app', gmail4, 'M2') # Send an offer
             sleep(10)
             print('SHOULD RECEIVE OFFER and SEND ANSWER:')
-            # TODO: beow recv prob pointles snow
+            printTable(gmail1.recv('app'))
+            printTable(gmail4.recv('app'))
             sleep(80)
             print('SHOULD HAVE CONNECTION:')
             gmail1.send('app', gmail4, 'M3') # Connection established
@@ -135,8 +107,7 @@ class BasicTest(TestCase):
             printTable(gmail4.recv('app'))  # recv over tcp
             gmail4.send('app', gmail1, 'M3B') # Connection established
             gmail4.send('app', gmail1, 'M3C') # Connection established
-            sleep(5)
-            # TODO: below sometimes fails; maybe hooking wrong event on agent for detecting complete connection
+            sleep(30)
             printTable(gmail1.recv('app'))  # recv over tcp
             gmail1.send('app', gmail4, 'M3D') # Connection established
             gmail1.send('app', gmail4, 'M3E') # Connection established
@@ -166,206 +137,10 @@ class BasicTest(TestCase):
     #         self.assertCountEqual(rec2, expected, 'Yahoo1 works')
 
 
-class NiceThread(Thread):
-    def __init__(self, context):
-        super().__init__(daemon=True)
-        self.daemon = True
-        self.context = context
-    def run(self):
-        GLib.MainLoop.new(self.context, False).run()
-
 
 # The main server object
-# TODO: does libnice successfully handle large packets? eg doing fragmentation and checking length
-# TODO: test TCP with multicast, multiple simultaneous connections, bidiretional
-# TODO: error handling; see powerpoint and things we gave to Jeannie
-# FIXME: I'm going to have serious issues with how 'recv' works
-#  -- attach_recv is needed for stun and it isn't introspectable...
-# TODO: send and receive successfully over TCP
-#     ^ and *reliably* do so -- ti fails sometimes now with 'invalid answer'
-#     ^ may want to increase stun-pacing-timer
-#     - i think the main reliability issue is related to old offers not getting deleted. sort by timestamp?
-# TODO: lint this (typecheck?), improve/automate tests...
-# ...test TCP in apps; generally test TCP more.
-
-# TODO: auto recv on a schedule to get eg __answer's
-# FIXME: crash at end related to sorce ref count
-# -- I'm guessing that this has somethng to do with nicethreads?
-#    -> fixed with two changes to agent.h - which was necessary?
-# TODO: still getting length race issue - tries to read incorrect length
-
-class OneWayConnection:
-    def _set_connected(self):
-        self._connected = True
-    def read_messages(self):
-        while True:
-            try:
-                self._bytes += self._data.get_nowait()
-            except(Empty):
-               break
-        print('READ: ', self._bytes)
-        while True:
-            if len(self._bytes) >= 10:
-                num = int(self._bytes[0:10])
-                if len(self._bytes) >= (10+num):
-                    yield msgpack.unpackb(base64.a85decode(self._bytes[10:10+num]), encoding='utf-8')
-                    self._bytes = self._bytes[10+num:]
-                else:
-                    break
-            else:
-                break
-    def _build_agent(self):
-        if self._agent is None:
-            context = GLib.MainContext.new()
-            self._nice_thread = NiceThread(context)
-            self._nice_thread.start()
-            agent = Nice.Agent.new_reliable(context, Nice.Compatibility.RFC5245)
-            agent.controlling_mode = self._control
-            stream = agent.add_stream(1)
-            agent.set_stream_name(stream, 'text')
-            agent.set_port_range(stream, 1, 5000, 5999)
-            agent.connect('new-selected-pair-full',
-                lambda agent, m, n, c1, c2: self._set_connected())
-            agent.attach_recv(stream, 1, context,
-                lambda a, m, n, sz, buf: self._data.put(buf)
-            )
-            self._agent = agent
-            self._stream = stream
-    def _request_candidates(self):
-        if not self._started_find:
-            self._started_find = True
-            self._agent.connect('candidate-gathering-done',
-                lambda instance, _: (
-                    self._set_sdp(instance.generate_local_sdp())
-                )
-            )
-            self._agent.gather_candidates(self._stream)
-
-    def __init__(self, control):
-        self._started_find = False
-        self._offer = None
-        self._answer = None
-        self._connected = False
-        self._control = control
-        self._agent = None
-        self._bytes = ''
-        self._arr = []
-        self._lock = Lock()
-        self._data = Queue()
-
-    def has_offer(self):
-        return self._offer is not None
-    def has_pair(self):
-        return self.has_offer() and (self._answer is not None)
-    def get_offer(self):
-        return self._offer
-    def has_conn(self):
-        return self._connected
-    def try_send(self, message):
-        message = str(len(message)).ljust(10) + message
-        print('GOAL SEND', message)
-        if self._connected:
-            print('ATTEMPTING SEND ', message)
-            if self._agent.send(self._stream, 1, len(message), message) == len(message):
-                print('DID SEND')
-                return True
-            else:
-                raise Exception('Failed to send message.')
-        else:
-            return False
-
-class OutgoingConnection(OneWayConnection):
-    def _set_sdp(self, sdp):
-       self._offer = sdp
-    def request_offer(self):
-        self._build_agent()
-        super()._request_candidates()
-    def set_answer(self, offer, answer):
-        if offer == self._offer:
-            self._answer = answer
-            self._agent.parse_remote_sdp(answer)
-            return True
-        else:
-            return False
-
-class IncomingConnection(OneWayConnection):
-    def _set_sdp(self, sdp):
-        self._answer = sdp
-        self._callback(sdp)
-    def request_answer(self, callback):
-        self._callback = callback
-        super()._request_candidates()
-    def set_offer(self, offer):
-        self._offer = offer
-        self._answer = None
-        self._build_agent()
-        self._agent.parse_remote_sdp(offer)
 
 
-class TwoWayConnection:
-    def log(self, *args):
-        self._chump.log(f'@[{self._id}]', *args)
-
-    def __init__(self, chump, id):
-        self._chump = chump
-        self._id = id
-        self._outgoing = OutgoingConnection(True)
-        self._incoming = []
-
-    def has_conn(self):
-        if self._outgoing.has_conn():
-            return True
-        for c in self._incoming:
-            if c.has_conn():
-                return True
-        return False
-    def make_offer(self):
-        # If we have a connection, we don't need to send offers:
-        if self.has_conn():
-            pass
-        # If we have an offer, though, we can return it:
-        elif self._outgoing.has_offer():
-            return self._outgoing.get_offer()
-        # Otherwise, we want to request an offer:
-        else:
-            self._outgoing.request_offer()
-    def got_offer(self, offer):
-        if self.has_conn():
-            pass
-        else:
-            incoming = IncomingConnection(False)
-            incoming.set_offer(offer)
-            incoming.request_answer(
-                lambda answer: self._chump.send_answer(self._id, answer, offer)
-            )
-            self._incoming.append(incoming)
-    def got_answer(self, pair):
-        if self.has_conn():
-            pass
-        else:
-            self._outgoing.set_answer(pair[0], pair[1])
-    def try_send(self, message):
-        if self._outgoing.try_send(message):
-            print('SENT OUTGOING')
-            return True
-        for c in self._incoming:
-            if c.try_send(message):
-                print('SENT INCOMING')
-                return True
-        return False
-    def read_messages(self):
-        for c in self._incoming:
-            yield from c.read_messages()
-        yield from self._outgoing.read_messages()
-
-class TcpDictionary(collections.defaultdict):
-    def __init__(self, chump):
-        super().__init__()
-        self._chump = chump
-    def __missing__(self, id):
-        # print('MAKING: ', id)
-        self[id] = TwoWayConnection(self._chump, id)
-        return self[id]
 
 class RecvThread(Thread):
 
@@ -373,7 +148,6 @@ class RecvThread(Thread):
         super().__init__(daemon=True)
         self.daemon = True
         self._stop_event = stop_event
-        # FIXME thread safety; broke TCP
         self._chump = chump
         self.doomed = Queue()
     def log(self, *args):
@@ -381,11 +155,11 @@ class RecvThread(Thread):
     def run(self):
         while not self._stop_event.is_set():
             with self._chump.lock:
-                self.doom()
-                self.sync()
-            sleep(15) # TODO make configurable
+                self._doom()
+                self._sync()
+            sleep(15)
         self.log('DONE!')
-    def doom(self):
+    def _doom(self):
         to_doom = []
         while True:
             try:
@@ -393,15 +167,13 @@ class RecvThread(Thread):
             except(Empty):
                break
         imap = self._chump.get_imap()
-        self.log('DOOMING', to_doom)
         if len(to_doom) > 0:
             doomed = ','.join(to_doom)
-            self.log('Dooming: ', doomed)
-            self.log(imap.uid("STORE", doomed, '+FLAGS', '\\Deleted'))
-            self.log(imap.uid("EXPUNGE", doomed))
+            imap.uid("STORE", doomed, '+FLAGS', '\\Deleted')
+            # imap.uid("EXPUNGE", doomed)
+            imap.expunge()
             to_doom = []
-    def sync(self):
-        self.log('WILL SYNC')
+    def _sync(self):
         imap = self._chump.get_imap()
         typ, count = imap.select()
         count = count[0].decode()
@@ -415,7 +187,6 @@ class RecvThread(Thread):
         for (mkey, mvalue) in messages:
             message = email.message_from_string(mvalue.decode())
             uid = re.search(rb'UID\s*(\d+)', mkey).group(1).decode()
-            # self.log('MSG: {0} {1} {2}'.format(uid, message['Subject'], message.get_payload()))
             full_message = None
             try:
                 # https://stackoverflow.com/questions/45124127/
@@ -423,51 +194,41 @@ class RecvThread(Thread):
             except:
                 # Just ignore seriously malformed messages
                 pass
-            if full_message is  not None and 'key' in full_message:
+            if full_message is not None and 'key' in full_message:
                 if full_message['key'] == '__answer':
-                    self.log('Got an answer of some sort...')
-                    self._chump._tcp[full_message['sender']].got_answer(full_message['body'])
+                    self._chump.tcpdict[full_message['sender']].got_answer(full_message['body'])
                     self.doomed.put(uid)
                 else:
-                    self._chump._queues[full_message['key']][uid] = full_message
+                    self._chump.queues[full_message['key']][uid] = full_message
                     if 'offer' in full_message:
-                        self.log('GOT OFFER!')
                         offers.append(full_message)
         for offer in offers:
             self.log(f'Got offer')
-            if 'timestamp' in offer:
-                self.log(f'With stamp: {offer["timestamp"]}')
-            self._chump._tcp[offer['sender']].got_offer(offer['offer'])
-            offer['offer'] = 'X' # Hide from user
-            # self.log('Message in old format!')
-            # Do nothing - this isn't a CHUMP message
-
+            self._chump.tcpdict[offer['sender']].got_offer(offer['offer'])
+            offer['offer'] = 'X'
 
 class ChumpServer:
-    def got_tcp(self, full_message):
-        self._tcp_messages[full_message['key']].append(full_message)
-
     def log(self, *args):
         if self._verbose:
             print(f'[{self.get_addr()}]', *args)
 
     def __init__(self, config_file):
-        self._verbose = True # TODO change
+        self._verbose = True
         self._config = ConfigParser()
         self._config.read(config_file)
         self._smtp = None
         self._imap = None
-        self._queues = defaultdict(dict)
-        self._tcp_messages = defaultdict(list)
-        self._tcp = TcpDictionary(self)
-        self.lock = Lock()
+        self.queues = defaultdict(dict)
+        self.tcpdict_messages = defaultdict(list)
+        self.tcpdict = TcpDictionary(self)
+        self.lock = Lock() # Lock for imap, _tcp, queues
         self._stop_event = Event()
         self._recv_thread = RecvThread(self._stop_event, self)
         self._recv_thread.start()
 
     def get_addr(self):
         return self._config['email']['address']
-    def get_smtp(self):
+    def _get_smtp(self):
         if self._smtp is None:
             smtp_config = self._config['smtp']
             smtp = SMTP(smtp_config['server'], smtp_config['port'])
@@ -479,7 +240,7 @@ class ChumpServer:
             self._smtp.verify(self._config['smtp']['from'])
         except SMTPServerDisconnected:
             self._smtp = None
-            return self.get_smtp()
+            return self._get_smtp()
         return self._smtp
     def get_imap(self):
         if self._imap is None:
@@ -490,6 +251,16 @@ class ChumpServer:
             )
             self._imap = imap
         return self._imap
+    def _send_email(self, recipients, message):
+        smtp = self._get_smtp()
+        if len(recipients) > 0:
+            msg = EmailMessage()
+            msg['From'] = '<' + self._config['smtp']['from'] + '>'
+            msg['To'] = ', '.join(recipients)
+            msg['Subject'] = 'CHUMP Message'
+            msg.set_content(message)
+            smtp.send_message(msg)
+
     def send(self, key, recipients, message):
         if not isinstance(recipients, list):
             recipients = [recipients]
@@ -497,7 +268,7 @@ class ChumpServer:
             if isinstance(x, ChumpServer)
             else x
             for x in recipients ]
-        smtp = self.get_smtp()
+        smtp = self._get_smtp()
         full_message = {
             'key': key,
             'sender': self._config['email']['address'],
@@ -505,35 +276,32 @@ class ChumpServer:
             'timestamp': int(time()),
             'protocol': 'email'
         }
+        message_tcp = base64.a85encode(msgpack.packb(
+             {**full_message, 'protocol': 'tcp'},
+        use_bin_type=True)).decode()
         new_recipients = []
-        for r in recipients:
-            inner_dict = full_message.copy()
-            inner_dict['protocol'] = 'tcp'
-            encoded = base64.a85encode(msgpack.packb(inner_dict, use_bin_type=True)).decode()
-            if self._tcp[r].try_send(encoded):
-                self.log('Trying to send succeeded...')
-                # ..and don't append to new_recipients
-                pass
-            else:
-                offer = self._tcp[r].make_offer()
-                if offer is not None:
-                    self.log(f'Providing offer... {full_message["timestamp"]}')
-                    full_message['offer'] = offer
-                new_recipients.append(r)
-        recipients = new_recipients
-        if len(recipients) > 0:
-            msg = EmailMessage()
-            msg['From'] = '<' + self._config['smtp']['from'] + '>'
-            msg['To'] = ', '.join(recipients)
-            msg['Subject'] = base64.a85encode(str.encode(key)).decode()
-            encoded = base64.a85encode(msgpack.packb(full_message, use_bin_type=True),wrapcol=80).decode()
-            msg.set_content(encoded)
-            smtp.send_message(msg)
+        with self.lock:
+            for r in recipients:
+                if not self.tcpdict[r].try_send(message_tcp):
+                    offer = self.tcpdict[r].make_offer()
+                    if offer is not None:
 
-    def send_answer(self, recipient, data, offer):
-        self.log(f'Sending answer to {recipient}.')
+                        self.log(f'Providing offer... {full_message["timestamp"]}')
+                        message_email = base64.a85encode(msgpack.packb(
+                            {**full_message, 'offer': offer},
+                        use_bin_type=True),wrapcol=80).decode()
+                        self._send_email([r], message_email)
+                    else:
+                        new_recipients.append(r)
+        message_email = base64.a85encode(msgpack.packb(
+             full_message,
+        use_bin_type=True),wrapcol=80).decode()
+        self._send_email(new_recipients, message_email)
+
+
+    def _send_answer(self, recipient, data, offer):
+        self.log('Sending answer!')
         self.send('__answer', recipient, [offer, data])
-        # self.read_from(recipient)
 
     def recv(self, key):
         with self.lock:
@@ -542,17 +310,17 @@ class ChumpServer:
             # whole thing is insecure anyway, it doesn't matter much.
 
             # 1. Get items from each TCP connection:
-            for k, val in self._tcp.items():
+            for k, val in self.tcpdict.items():
                 for msg in val.read_messages():
-                    self.got_tcp(msg)
-            mq = [x for x in self._tcp_messages[key]]
-            self._tcp_messages[key] = []
+                    self.tcpdict_messages[msg['key']].append(msg)
+            mq = [x for x in self.tcpdict_messages[key]]
+            self.tcpdict_messages[key] = []
 
             # 2. Get items from the receive thread's queue, and mark them for deletion:
-            for uid, full_message in self._queues[key].items():
+            for uid, full_message in self.queues[key].items():
                 self._recv_thread.doomed.put(uid)
                 mq.append(full_message)
-            self._queues[key] = {}
+            self.queues[key] = {}
 
             # 3. Sort by timestamp so things are at least somewhat in order:
             mq.sort(key=
@@ -565,42 +333,42 @@ class ChumpServer:
         #keyEncoded = base64.a85encode(str.encode(key)).decode()
         messageEncoded = base64.a85encode(str.encode(message),wrapcol=80).decode()
 
-        imap = self.get_imap();
-        resp, data = imap.list('""', '*Draft*')
-        draftsBoxName = data[0].split()[3];
-        typ, count = imap.select(draftsBoxName);
+        with self.lock:
+            imap = self.get_imap();
+            resp, data = imap.list('""', '*Draft*')
+            draftsBoxName = data[0].split()[3];
+            typ, count = imap.select(draftsBoxName);
 
-        # Delete old draft if it exists
-        typ, msgnums = imap.search(None, 'SUBJECT', keyEncoded)
-        if len(msgnums) > 0:
-            for num in msgnums[0].split():
-                imap.store(num, '+FLAGS', '\\Deleted')
-        imap.expunge()
+            # Delete old draft if it exists
+            typ, msgnums = imap.search(None, 'SUBJECT', keyEncoded)
+            if len(msgnums) > 0:
+                for num in msgnums[0].split():
+                    imap.store(num, '+FLAGS', '\\Deleted')
+            imap.expunge()
 
-        msg = email.message.Message()
-        msg['Subject'] = keyEncoded
-        # Some servers are picky abour CRLF at the end of messages
-        messageEncoded += "\r\n"
-        msg.set_payload(messageEncoded)
-        typ, resp = imap.append(draftsBoxName, None, None, str(msg).encode())
+            msg = email.message.Message()
+            msg['Subject'] = keyEncoded
+            # Some servers are picky abour CRLF at the end of messages
+            messageEncoded += "\r\n"
+            msg.set_payload(messageEncoded)
+            typ, resp = imap.append(draftsBoxName, None, None, str(msg).encode())
 
     def retrieve(self, key):
         keyEncoded = key;
-        #keyEncoded = base64.a85encode(str.encode(key)).decode()
+        with self.lock:
+            imap = self.get_imap();
+            resp, data = imap.list('""', '*Draft*')
+            draftsBoxName = data[0].split()[3];
+            typ, count = imap.select(draftsBoxName);
+            typ, msgnums = imap.search(None, 'SUBJECT', keyEncoded)
 
-        imap = self.get_imap();
-        resp, data = imap.list('""', '*Draft*')
-        draftsBoxName = data[0].split()[3];
-        typ, count = imap.select(draftsBoxName);
-        typ, msgnums = imap.search(None, 'SUBJECT', keyEncoded)
+            if count == '0' or len(msgnums[0]) == 0 or typ == "NO":
+                return '';
 
-        if count == '0' or len(msgnums[0]) == 0 or typ == "NO":
-            return '';
-
-        typ, data = imap.fetch(msgnums[0].split()[0], '(RFC822)')
-        mkey, mvalue = data[0]
-        message = email.message_from_string(mvalue.decode())
-        return base64.a85decode(message.get_payload()).decode()
+            typ, data = imap.fetch(msgnums[0].split()[0], '(RFC822)')
+            mkey, mvalue = data[0]
+            message = email.message_from_string(mvalue.decode())
+            return base64.a85decode(message.get_payload()).decode()
 
 
     # For 'with' statement to work:
