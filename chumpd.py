@@ -127,19 +127,20 @@ class BasicTest(TestCase):
             gmail1.send('app', gmail4, 'M2') # Send an offer
             sleep(10)
             print('SHOULD RECEIVE OFFER and SEND ANSWER:')
-            printTable(gmail4.recv('app')) # get the offer, send an answer
+            # TODO: beow recv prob pointles snow
+            # printTable(gmail4.recv('app')) # get the offer, send an answer
             sleep(50)
             print('SHOULD RECEIVE ANSWER:')
-            printTable(gmail1.recv('app')) # get the answer!
+            # printTable(gmail1.recv('app')) # get the answer!
             sleep(30)
             print('SHOULD HAVE CONNECTION:')
             gmail1.send('app', gmail4, 'M3') # Connection established
             sleep(1)
             printTable(gmail4.recv('app'))  # recv over tcp
-            # TODO: msgpack.exceptions.ExtraData
             gmail4.send('app', gmail1, 'M3B') # Connection established
             gmail4.send('app', gmail1, 'M3C') # Connection established
-            sleep(1)
+            sleep(5)
+            # TODO: below sometimes fails; maybe hooking wrong event on agent for detecting complete connection
             printTable(gmail1.recv('app'))  # recv over tcp
             gmail1.send('app', gmail4, 'M3D') # Connection established
             gmail1.send('app', gmail4, 'M3E') # Connection established
@@ -177,16 +178,6 @@ class NiceThread(Thread):
     def run(self):
         GLib.MainLoop.new(self.context, False).run()
 
-def get_sdp(agent, stream, callback):
-    agent.connect('candidate-gathering-done',
-        lambda instance, _:
-            [print('HERE: '), callback(instance.generate_local_sdp())],
-    )
-    agent.gather_candidates(stream)
-
-
-
-id = 0
 
 # The main server object
 # TODO: does libnice successfully handle large packets? eg doing fragmentation and checking length
@@ -211,26 +202,22 @@ class OneWayConnection:
     def _set_connected(self):
         self._connected = True
     def read_messages(self):
-        # the below lock is *absolutely* necessary to prevent
-        # an extremely obnoxious race condition.
-        # Trust me on this one.
         while True:
             try:
                 self._bytes += self._data.get_nowait()
             except(Empty):
                break
-        with self._lock:
-            while True:
-                # print('QUEUE', self._bytes)
-                if len(self._bytes) >= 10:
-                    num = int(self._bytes[0:10])
-                    if len(self._bytes) >= (10+num):
-                        yield msgpack.unpackb(base64.a85decode(self._bytes[10:10+num]), encoding='utf-8')
-                        self._bytes = self._bytes[10+num:]
-                    else:
-                        break
+        print('READ: ', self._bytes)
+        while True:
+            if len(self._bytes) >= 10:
+                num = int(self._bytes[0:10])
+                if len(self._bytes) >= (10+num):
+                    yield msgpack.unpackb(base64.a85decode(self._bytes[10:10+num]), encoding='utf-8')
+                    self._bytes = self._bytes[10+num:]
                 else:
                     break
+            else:
+                break
     def _build_agent(self):
         if self._agent is None:
             context = GLib.MainContext.new()
@@ -280,14 +267,14 @@ class OneWayConnection:
         return self._connected
     def try_send(self, message):
         message = str(len(message)).ljust(10) + message
+        print('GOAL SEND', message)
         if self._connected:
             print('ATTEMPTING SEND ', message)
             if self._agent.send(self._stream, 1, len(message), message) == len(message):
                 print('DID SEND')
                 return True
             else:
-                print('Error sending message!')
-                return False
+                raise Exception('Failed to send message.')
         else:
             return False
 
@@ -363,9 +350,11 @@ class TwoWayConnection:
             self._outgoing.set_answer(pair[0], pair[1])
     def try_send(self, message):
         if self._outgoing.try_send(message):
+            print('SENT OUTGOING')
             return True
         for c in self._incoming:
             if c.try_send(message):
+                print('SENT INCOMING')
                 return True
         return False
     def read_messages(self):
@@ -378,7 +367,7 @@ class TcpDictionary(collections.defaultdict):
         super().__init__()
         self._chump = chump
     def __missing__(self, id):
-        print('MAKING: ', id)
+        # print('MAKING: ', id)
         self[id] = TwoWayConnection(self._chump, id)
         return self[id]
 
@@ -386,6 +375,7 @@ class RecvThread(Thread):
 
     def __init__(self, stop_event, chump):
         super().__init__(daemon=True)
+        self.daemon = True
         self._stop_event = stop_event
         # FIXME thread safety; broke TCP
         self._chump = chump
@@ -394,10 +384,11 @@ class RecvThread(Thread):
         self._chump.log('recv_thread', *args)
     def run(self):
         while not self._stop_event.is_set():
-            self.doom()
-            self.sync()
+            with self._chump.lock:
+                self.doom()
+                self.sync()
             sleep(15) # TODO make configurable
-        print('DONE!')
+        self.log('DONE!')
     def doom(self):
         to_doom = []
         while True:
@@ -406,7 +397,7 @@ class RecvThread(Thread):
             except(Empty):
                break
         imap = self._chump.get_imap()
-        print('DOOMING', to_doom)
+        self.log('DOOMING', to_doom)
         if len(to_doom) > 0:
             doomed = ','.join(to_doom)
             self.log('Dooming: ', doomed)
@@ -446,12 +437,6 @@ class RecvThread(Thread):
                     if 'offer' in full_message:
                         self.log('GOT OFFER!')
                         offers.append(full_message)
-        # always look at more recent offers first, since they
-        # have a greater likelihood of success.
-        offers.sort(key=
-            lambda x: (x['timestamp'] if ('timestamp' in x) else 0)
-        )
-        # offers.reverse()
         for offer in offers:
             self.log(f'Got offer')
             if 'timestamp' in offer:
@@ -467,9 +452,11 @@ class ChumpServer:
         self._tcp_messages[full_message['key']].append(full_message)
 
     def log(self, *args):
-        print(f'[{self.get_addr()}]', *args)
+        if self._verbose:
+            print(f'[{self.get_addr()}]', *args)
 
     def __init__(self, config_file):
+        self._verbose = True # TODO change
         self._config = ConfigParser()
         self._config.read(config_file)
         self._smtp = None
@@ -477,9 +464,11 @@ class ChumpServer:
         self._queues = defaultdict(dict)
         self._tcp_messages = defaultdict(list)
         self._tcp = TcpDictionary(self)
+        self.lock = Lock()
         self._stop_event = Event()
         self._recv_thread = RecvThread(self._stop_event, self)
         self._recv_thread.start()
+
     def get_addr(self):
         return self._config['email']['address']
     def get_smtp(self):
@@ -551,28 +540,29 @@ class ChumpServer:
         # self.read_from(recipient)
 
     def recv(self, key):
-        # NOTE: we assume here that the 'sender' value in each message is correct
-        # (i.e. we allow the other users to spoof their own addresses). Since this
-        # whole thing is insecure anyway, it doesn't matter much.
+        with self.lock:
+            # NOTE: we assume here that the 'sender' value in each message is correct
+            # (i.e. we allow the other users to spoof their own addresses). Since this
+            # whole thing is insecure anyway, it doesn't matter much.
 
-        # 1. Get items from each TCP connection:
-        for k, val in self._tcp.items():
-            for msg in val.read_messages():
-                self.got_tcp(msg)
-        mq = [x for x in self._tcp_messages[key]]
-        self._tcp_messages[key] = []
+            # 1. Get items from each TCP connection:
+            for k, val in self._tcp.items():
+                for msg in val.read_messages():
+                    self.got_tcp(msg)
+            mq = [x for x in self._tcp_messages[key]]
+            self._tcp_messages[key] = []
 
-        # 2. Get items from the receive thread's queue, and mark them for deletion:
-        for uid, full_message in self._queues[key].items():
-            self._recv_thread.doomed.put(uid)
-            mq.append(full_message)
-        self._queues[key] = {}
+            # 2. Get items from the receive thread's queue, and mark them for deletion:
+            for uid, full_message in self._queues[key].items():
+                self._recv_thread.doomed.put(uid)
+                mq.append(full_message)
+            self._queues[key] = {}
 
-        # 3. Sort by timestamp so things are at least somewhat in order:
-        mq.sort(key=
-            lambda x: (x['timestamp'] if ('timestamp' in x) else 0)
-        )
-        return mq
+            # 3. Sort by timestamp so things are at least somewhat in order:
+            mq.sort(key=
+                lambda x: (x['timestamp'] if ('timestamp' in x) else 0)
+            )
+            return mq
 
     def store(self, key, message):
         keyEncoded = key;
