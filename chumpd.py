@@ -15,7 +15,7 @@ from argparse import ArgumentParser
 from configparser import ConfigParser
 from collections import defaultdict
 from gi.repository import Nice, GLib
-from threading import Thread
+from threading import Thread, Lock
 import msgpack
 import zerorpc
 from typing import Callable
@@ -206,19 +206,25 @@ id = 0
 class OneWayConnection:
     def _set_connected(self):
         self._connected = True
-    def _handle_bytes(self, buf):
-        pass
     def read_messages(self):
-        # pass
-        # self._bytes += buf
-        if len(self._bytes) >= 10:
-            num = int(self._bytes[0:10])
-            if len(self._bytes) >= (10+num):
-                msg = self._bytes[10:10+num]
-                self._bytes = self._bytes[10+num:]
-                msg = msgpack.unpackb(base64.a85decode(msg), encoding='utf-8')
-                self._on_recv(msg)
-                self.read_messages()
+        # the below lock is *absolutely* necessary to prevent
+        # an extremely obnoxious race condition.
+        # Trust me on this one.
+        with self._lock:
+            while True:
+                # print('QUEUE', self._bytes)
+                if len(self._bytes) >= 10:
+                    num = int(self._bytes[0:10])
+                    if len(self._bytes) >= (10+num):
+                        yield msgpack.unpackb(base64.a85decode(self._bytes[10:10+num]), encoding='utf-8')
+                        self._bytes = self._bytes[10+num:]
+                    else:
+                        break
+                else:
+                    break
+    def _got_bytes(self, buf):
+        with self._lock:
+            self._bytes += buf
     def _build_agent(self):
         if self._agent is None:
             context = GLib.MainContext.new()
@@ -232,8 +238,7 @@ class OneWayConnection:
             agent.connect('new-selected-pair-full',
                 lambda agent, m, n, c1, c2: self._set_connected())
             agent.attach_recv(stream, 1, context,
-            # apparently there's an issue with the lifetime of this???
-                lambda a, m, n, sz, buf: setattr(self, '_bytes', self._bytes + buf)
+                lambda a, m, n, sz, buf: self._got_bytes(buf)
             )
             self._agent = agent
             self._stream = stream
@@ -248,16 +253,16 @@ class OneWayConnection:
             )
             self._agent.gather_candidates(self._stream)
 
-    def __init__(self, control, callback):
+    def __init__(self, control):
         self._started_find = False
         self._offer = None
         self._answer = None
         self._connected = False
         self._control = control
         self._agent = None
-        self._on_recv = callback
         self._bytes = ''
         self._arr = []
+        self._lock = Lock()
 
     def has_offer(self):
         return self._offer is not None
@@ -313,8 +318,8 @@ class TwoWayConnection:
     def __init__(self, chump, id):
         self._chump = chump
         self._id = id
-        self._outgoing = OutgoingConnection(True, chump.got_tcp)
-        self._incoming = IncomingConnection(False, chump.got_tcp)
+        self._outgoing = OutgoingConnection(True)
+        self._incoming = IncomingConnection(False)
 
     def make_offer(self):
         # If we have a pair, we don't need to send offers:
@@ -345,8 +350,8 @@ class TwoWayConnection:
         return self._outgoing.try_send(message) \
             or self._incoming.try_send(message)
     def read_messages(self):
-        self._incoming.read_messages()
-        self._outgoing.read_messages()
+        yield from self._incoming.read_messages()
+        yield from self._outgoing.read_messages()
 
 class TcpDictionary(collections.defaultdict):
     def __init__(self, chump):
@@ -424,7 +429,7 @@ class ChumpServer:
         for r in recipients:
             inner_dict = full_message.copy()
             inner_dict['protocol'] = 'tcp'
-            encoded = base64.a85encode(msgpack.packb(inner_dict, use_bin_type=True),wrapcol=80).decode()
+            encoded = base64.a85encode(msgpack.packb(inner_dict, use_bin_type=True)).decode()
             if self._tcp[r].try_send(encoded):
                 self.log('Trying to send succeeded...')
                 # ..and don't append to new_recipients
@@ -520,7 +525,8 @@ class ChumpServer:
     def recv(self, key):
         self.sync()
         for k, val in self._tcp.items():
-            val.read_messages()
+            for msg in val.read_messages():
+                self.got_tcp(msg)
         mq = [x for x in self._tcp_messages[key]]
         #     # TODO we do need to base85 b/c of unicode-y issues (workaround somehow?)
         self._tcp_messages[key] = []
