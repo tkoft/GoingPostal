@@ -3,10 +3,7 @@
   "version": "0.1.0",
   "main": "main.js",
   "dependencies": {
-    "electron-prebuilt": "^1.4.13",
-    "electron-rebuild": "^1.6.0",
-    "electron-version": "^1.1.1",
-    "uniq": "^1.0.1",
+    "electron": "^1.7.9",
     "zeromq": "^4.6.0",
     "zerorpc": "^0.9.7"
   }

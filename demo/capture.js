@@ -49,58 +49,55 @@
     		var zerorpc = require("zerorpc")
     		client = new zerorpc.Client();
     		client.connect(require('process').env['SOCKET']);
-	    // client.connect("tcp://127.0.0.1:2900");
-	    console.log("connected");
-	    client.on("error", function(error) {
-	    	console.error("RPC client error:", error);
-	    	alert("CHUMP encountered an error.")
-	    })
+    		client.on("error", function(error) {
+    			console.error("RPC client error:", error);
+    			alert("CHUMP encountered an error.")
+    		})
 
-	    client.invoke("get_addr", function(error, res, more) {
-	    	if (error) {
-	    		console.error(error);
-	    	} else {
-	    		localuser = res
-	    		document.getElementById('tagline').innerHTML = "Welcome, " + localuser + "!";
-	    		console.log("CHUMP username: " + localuser)
-	    	}
-	    })
-	} catch (err) {
-		console.error(err);
-		alert("Failed to connect to CHUMP daemon.")
-	}
+    		client.invoke("get_addr", function(error, res, more) {
+    			if (error) {
+    				console.error(error);
+    			} else {
+    				localuser = res
+    				document.getElementById('tagline').innerHTML = "Welcome, " + localuser + "!";
+    			}
+    		})
+    	} catch (err) {
+    		console.error(err);
+    		alert("Failed to connect to CHUMP daemon.")
+    	}
 
-	resetCamera();
-}
+    	resetCamera();
+    }
 
-function resetCamera() {
-	navigator.getMedia = ( navigator.getUserMedia ||
-		navigator.webkitGetUserMedia ||
-		navigator.mozGetUserMedia ||
-		navigator.msGetUserMedia);
-	navigator.getMedia(
-	{
-		video: true,
-		audio: false
-	},
-	function(stream) {
-		if (navigator.mozGetUserMedia) {
-			video.mozSrcObject = stream;
-		} else {
-			var vendorURL = window.URL || window.webkitURL;
-			video.src = vendorURL.createObjectURL(stream);
-		}
-		localstream = stream;
-		video.play();
-	},
-	function(err) {
-		console.log("An error occured! " + err);
-	}
-	);
+    function resetCamera() {
+    	navigator.getMedia = ( navigator.getUserMedia ||
+    		navigator.webkitGetUserMedia ||
+    		navigator.mozGetUserMedia ||
+    		navigator.msGetUserMedia);
+    	navigator.getMedia(
+    	{
+    		video: true,
+    		audio: false
+    	},
+    	function(stream) {
+    		if (navigator.mozGetUserMedia) {
+    			video.mozSrcObject = stream;
+    		} else {
+    			var vendorURL = window.URL || window.webkitURL;
+    			video.src = vendorURL.createObjectURL(stream);
+    		}
+    		localstream = stream;
+    		video.play();
+    	},
+    	function(err) {
+    		console.error("An error occured! " + err);
+    	}
+    	);
 
-	video.addEventListener('canplay', function(ev){
-		if (!streaming) {
-			height = video.videoHeight / (video.videoWidth/width);
+    	video.addEventListener('canplay', function(ev){
+    		if (!streaming) {
+    			height = video.videoHeight / (video.videoWidth/width);
 
 		// Firefox currently has a bug where the height can't be read from
 		// the video, so we will make assumptions if this happens.
@@ -117,11 +114,11 @@ function resetCamera() {
 	}
 }, false);
 
-	camera.style.display = 'block';
-	startcontrols.style.display = 'block';
-	photo.style.display = 'none';
-	sendcontrols.style.display = 'none';
-}
+    	camera.style.display = 'block';
+    	startcontrols.style.display = 'block';
+    	photo.style.display = 'none';
+    	sendcontrols.style.display = 'none';
+    }
 
     // Capture a photo by fetching the current contents of the video
     // and drawing it into a canvas, then converting that to a PNG
@@ -146,15 +143,14 @@ function resetCamera() {
 	    startcontrols.style.display = "none";
 
 	    // Fetch friends list from CHUMPd
-	   	friendslist.innerHTML = "Loading friends list...";
-	    client.invoke("retrieve", "crapchat.frendslist", function(error, res, more) {
-	    	if (error) {
+	    friendslist.innerHTML = "Loading friends list...";
+	    client.invoke("retrieve", "crapchat.friendslist", function(error, res, more) {
+	    	if (error || res.length == 0) {
 	    		console.error(error);
-	   			friendslist.innerHTML = "No friends to show.";
+	    		friendslist.innerHTML = "No friends to show.";
 	    	} else {
-	   			friendslist.innerHTML = "";
+	    		friendslist.innerHTML = "";
 	    		friends = res.split(" ");
-	    		console.log(friends)
 	    		for (var i = 0; i < friends.length; i++) {
 	    			var label = document.createElement("label");
 	    			var description = document.createTextNode(friends[i])
@@ -187,7 +183,7 @@ function preparesend() {
 	}
 
 	var data = photo.getAttribute('src');
-	client.invoke("send", "crapchat-photo", recipientslist, data, function(error, res, more) {
+	client.invoke("send", "crapchat.photo", recipientslist, data, function(error, res, more) {
 		if (error) {
 			console.error(error);
 		} else {

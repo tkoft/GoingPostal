@@ -1,8 +1,15 @@
+.contentarea {
+    font-size: 16px;
+    font-family: "Lucida Grande", "Arial", sans-serif;
+    text-align: center;
+}
+
 #video {
     border: 1px solid black;
     box-shadow: 2px 2px 3px black;
     width:320px;
     height:240px;
+    margin: 0 auto;
 }
 
 #photo {
@@ -10,6 +17,7 @@
     box-shadow: 2px 2px 3px black;
     width:320px;
     height:240px;
+    margin: 0 auto;
 }
 
 #canvas {
@@ -18,7 +26,7 @@
 
 .camera {
     width: 340px;
-    display:inline-block;
+    margin: 0 auto;
 }
 
 .output {
@@ -28,18 +36,16 @@
 
 #photo {
     display:none;
+    text-align: center;
 }
 
-#startbutton {
-    display:block;
+#startcontrols {
+    display:inline-block;
+    text-align: center;
 }
 
 #sendcontrols {
     display:none;
-}
-
-.contentarea {
-    font-size: 16px;
-    font-family: "Lucida Grande", "Arial", sans-serif;
-    width: 760px;
+    width: 50%;
+    margin: 0 auto;
 }
