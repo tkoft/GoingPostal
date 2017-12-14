@@ -7,8 +7,14 @@
 
 	function startup() {
 		addfriendfield = document.getElementById('addfriendfield')
-    	addfriendbutton = document.getElementById('addbutton');
-    	addfriendbutton.addEventListener('click', addfriend, false);
+		addfriendbutton = document.getElementById('addbutton');
+		addfriendfield.addEventListener("keyup", function(event) {
+			event.preventDefault();
+			if (event.keyCode === 13) {
+				addFriend();
+			}
+		});
+		addfriendbutton.addEventListener('click', addFriend, false);
 
 		friendslist.innerHTML = "Loading friends list...";
 		try {
@@ -20,6 +26,16 @@
 				alert("CHUMP encountered an error.")
 			})
 
+			client.invoke("get_addr", function(error, res, more) {
+				if (error) {
+					console.error(error);
+				} else {
+					localuser = res
+					document.getElementById('tagline').innerHTML = "Welcome, " + localuser + "!";
+					console.log("CHUMP username: " + localuser)
+				}
+			})
+			
 			friendslist.innerHTML = "Loading friends list...";
 			client.invoke("retrieve", "crapchat.friendslist", function(error, res, more) {
 				if (error || res.length == 0) {
@@ -45,7 +61,12 @@
 			var deletebutton = document.createElement("button");
 
 			deletebutton.innerHTML = "Delete"
-
+			deletebutton.id = "deletebutton_" + i;
+			(function(i){
+				deletebutton.addEventListener('click', function(){
+					removeFriend(this.id.replace("deletebutton_", ""))
+				}, false);
+			})(i);
 			label.appendChild(description);
 			label.appendChild(deletebutton);
 			label.style.display = "block";
@@ -54,7 +75,7 @@
 		}
 	}
 
-	function addfriend() {
+	function addFriend() {
 		inputText = addfriendfield.value
 		if (isValidUser(inputText)) {
 			friends.push(inputText);
@@ -75,6 +96,20 @@
 		}
 	}
 
+	function removeFriend(i) {
+		friends.splice(i, 1)
+		client.invoke("store", "crapchat.friendslist", friends.join(" "), function(error, res, more) {
+			if (error) {
+				console.log(error)
+				alert("Failed to remove friend.")
+			} else {
+				addfriendfield.value = ""
+				updateFriendsList();
+				alert("Removed friend :(")
+			}
+		})
+	}
+
 	function isValidUser(name)   
 	{  
 		return (/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(name))  
@@ -84,7 +119,7 @@
 	// todo:  maybe store friends list? Unless we do it as each one is added
 }
 
-	window.addEventListener('load', startup, false);
-	window.addEventListener('unload', teardown, false);
+window.addEventListener('load', startup, false);
+window.addEventListener('unload', teardown, false);
 
 })();
