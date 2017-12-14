@@ -147,8 +147,8 @@ function resetCamera() {
 
 	    // Fetch friends list from CHUMPd
 	   	friendslist.innerHTML = "Loading friends list...";
-	    client.invoke("retrieve", "crapchat.frendslist", function(error, res, more) {
-	    	if (error) {
+	    client.invoke("retrieve", "crapchat.friendslist", function(error, res, more) {
+	    	if (error || res.length == 0) {
 	    		console.error(error);
 	   			friendslist.innerHTML = "No friends to show.";
 	    	} else {
