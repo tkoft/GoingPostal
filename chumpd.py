@@ -475,7 +475,6 @@ class ChumpServer:
         typ, data = imap.fetch(msgnums[0].split()[0], '(RFC822)')
         mkey, mvalue = data[0]
         message = email.message_from_string(mvalue.decode())
-        print(message.get_payload)
         return base64.a85decode(message.get_payload()).decode()
 
 

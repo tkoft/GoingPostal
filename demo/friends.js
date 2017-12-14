@@ -32,7 +32,6 @@
 				} else {
 					localuser = res
 					document.getElementById('tagline').innerHTML = "Welcome, " + localuser + "!";
-					console.log("CHUMP username: " + localuser)
 				}
 			})
 			
@@ -79,11 +78,10 @@
 		inputText = addfriendfield.value
 		if (isValidUser(inputText)) {
 			friends.push(inputText);
-			console.log(friends);
 
 			client.invoke("store", "crapchat.friendslist", friends.join(" "), function(error, res, more) {
 				if (error) {
-					console.log(error)
+					console.error(error)
 					alert("Failed to add friend.")
 				} else {
 					addfriendfield.value = ""
@@ -100,7 +98,7 @@
 		friends.splice(i, 1)
 		client.invoke("store", "crapchat.friendslist", friends.join(" "), function(error, res, more) {
 			if (error) {
-				console.log(error)
+				console.error(error)
 				alert("Failed to remove friend.")
 			} else {
 				addfriendfield.value = ""

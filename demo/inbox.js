@@ -26,7 +26,6 @@
 				} else {
 					localuser = res
 					document.getElementById('tagline').innerHTML = "Welcome, " + localuser + "!";
-					console.log("CHUMP username: " + localuser)
 				}
 			})
 
@@ -69,7 +68,6 @@
 				button.appendChild(label);
 				button.id = "button_" + i;
 				button.style.display = "block";
-				console.log(messageDataList[i]["sender"]);
 				(function(i){
 					button.addEventListener('click', function(){
 						showmessage(this.id.replace("button_", ""), messageDataList[i]["body"])
@@ -96,7 +94,6 @@
 	}
 
 	function teardown() {
-		//console.log("mdL " + JSON.stringify(messageDataList))
 		client.invoke("store", "crapchat.unread", JSON.stringify(messageDataList), function(error, res, more) {
 			if (error) {
 				console.error("Failed to save unread messages.");
