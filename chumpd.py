@@ -12,7 +12,7 @@ from argparse import ArgumentParser
 from configparser import ConfigParser
 from collections import defaultdict
 from gi.repository import Nice, GLib
-from threading import Thread, Lock, Timer, Event
+from threading import Thread, Lock, Timer, Event, RLock
 from queue import Queue, Empty
 import msgpack
 import zerorpc
@@ -33,6 +33,7 @@ from tcp_support import TcpDictionary
 # TODO: make methods private
 # FIXME: cf checlist
 # FIXME: broke recv from email?
+# FIXME: redo old tests, M3A not always reciveved
 # FIXME: Gary having issues with multiple recv's
 # FIXME: current issue -- sending works but recv doesn't; check both directions
 # TODO: try UDP instead?
@@ -50,7 +51,7 @@ from tcp_support import TcpDictionary
 
 
 # Tests.
-# Example: pipenv run python3 -m unittest chumpd.py
+# Example: pipenv run python3 -m unittest -vf chumpd.py
 
 # https://stackoverflow.com/questions/17330139/python-printing-a-dictionary-as-a-horizontal-table-with-headers
 def printTable(myDict, colList=None):
@@ -91,27 +92,32 @@ class BasicTest(TestCase):
     def test_tcp(self):
         with ChumpServer('configs/gmail4.ini') as gmail4, \
             ChumpServer('configs/gmail1.ini') as gmail1:
-            print('Starting...')
+            # Clean out queues and send initial message
+            gmail1.recv('app')
+            gmail4.recv('app')
             gmail1.send('app', gmail4, 'M1')
             sleep(30)
             print('SHOULD SEND OFFER:')
             gmail1.send('app', gmail4, 'M2') # Send an offer
-            sleep(10)
             print('SHOULD RECEIVE OFFER and SEND ANSWER:')
-            printTable(gmail1.recv('app'))
-            printTable(gmail4.recv('app'))
+            sleep(30)
+            self.assertEqual(gmail1.recv('app'), [])
+            self.assertEqual(
+                [{**x, 'timestamp': 0} for x in gmail4.recv('app')],
+                [
+                    {'key': 'app', 'sender': gmail1.get_addr(), 'body': 'M1', 'timestamp':0, 'protocol': 'email'}
+                    ,{'key': 'app', 'sender': gmail1.get_addr(), 'body': 'M2', 'timestamp':0, 'protocol': 'email', 'offer': 'X'}
+                ]
+            )
             sleep(80)
             print('SHOULD HAVE CONNECTION:')
-            gmail1.send('app', gmail4, 'M3') # Connection established
-            sleep(1)
-            printTable(gmail4.recv('app'))  # recv over tcp
-            gmail4.send('app', gmail1, 'M3B') # Connection established
-            gmail4.send('app', gmail1, 'M3C') # Connection established
-            sleep(30)
-            printTable(gmail1.recv('app'))  # recv over tcp
-            gmail1.send('app', gmail4, 'M3D') # Connection established
-            gmail1.send('app', gmail4, 'M3E') # Connection established
+            gmail1.send('app', gmail4, 'M3A')
+            gmail4.send('app', gmail1, 'M3B')
+            gmail4.send('app', gmail1, 'M3C')
+            gmail1.send('app', gmail4, 'M3D')
+            gmail1.send('app', gmail4, 'M3E')
             sleep(5)
+            printTable(gmail1.recv('app'))
             printTable(gmail4.recv('app'))  # recv over tcp
 
     # def test_imap(self):
@@ -155,6 +161,7 @@ class RecvThread(Thread):
     def run(self):
         while not self._stop_event.is_set():
             with self._chump.lock:
+                self.log('Getting...')
                 self._doom()
                 self._sync()
             sleep(15)
@@ -195,6 +202,7 @@ class RecvThread(Thread):
                 # Just ignore seriously malformed messages
                 pass
             if full_message is not None and 'key' in full_message:
+                # print('GOT', full_message)
                 if full_message['key'] == '__answer':
                     self._chump.tcpdict[full_message['sender']].got_answer(full_message['body'])
                     self.doomed.put(uid)
@@ -221,7 +229,7 @@ class ChumpServer:
         self.queues = defaultdict(dict)
         self.tcpdict_messages = defaultdict(list)
         self.tcpdict = TcpDictionary(self)
-        self.lock = Lock() # Lock for imap, _tcp, queues
+        self.lock = RLock() # Lock for imap, _tcp, queues
         self._stop_event = Event()
         self._recv_thread = RecvThread(self._stop_event, self)
         self._recv_thread.start()
@@ -253,6 +261,7 @@ class ChumpServer:
         return self._imap
     def _send_email(self, recipients, message):
         smtp = self._get_smtp()
+        self.log('send email', message)
         if len(recipients) > 0:
             msg = EmailMessage()
             msg['From'] = '<' + self._config['smtp']['from'] + '>'

@@ -140,6 +140,8 @@ class IncomingConnection(OneWayConnection):
         self._answer = None
         self._build_agent()
         self._agent.parse_remote_sdp(offer)
+    def get_answer(self):
+        return self._answer
 
 
 class TwoWayConnection:
@@ -170,11 +172,17 @@ class TwoWayConnection:
         else:
             self._outgoing.request_offer()
     def got_offer(self, offer):
-        print('Got offer!')
+        self.log('Got offer!')
         if self.has_conn():
             pass
         elif offer in self._incoming:
-            print('Redundant offer!')
+            conn = self._incoming[offer]
+            if conn.has_pair():
+                self._chump._send_answer(self._id,
+                    conn.get_answer(),
+                    conn.get_offer(),
+                )
+            self.log('Redundant offer!')
             pass
         else:
             incoming = IncomingConnection(False)
@@ -185,8 +193,10 @@ class TwoWayConnection:
             self._incoming[offer] = incoming
     def got_answer(self, pair):
         if self.has_conn():
+            self.log('Redundant answer!')
             pass
         else:
+            self.log('Got answer')
             self._outgoing.set_answer(pair[0], pair[1])
     def try_send(self, message):
         if self._outgoing.try_send(message):
