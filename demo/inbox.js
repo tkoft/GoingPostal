@@ -91,7 +91,7 @@
 			photo.setAttribute('src', '');
 			photo.style.display = "none";
 			messagelist.style.display = "inline-block";
-		}, 5000);
+		}, 2000);
 	}
 
 	function teardown() {
