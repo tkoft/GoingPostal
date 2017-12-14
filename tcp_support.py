@@ -245,6 +245,5 @@ class TcpDictionary(collections.defaultdict):
         super().__init__()
         self._chump = chump
     def __missing__(self, id):
-        # print('MAKING: ', id)
         self[id] = TwoWayConnection(self._chump, id)
         return self[id]

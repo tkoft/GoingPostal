@@ -1,9 +1,6 @@
 
 
-# FIXME: cf checlist
-# FIXME: bug -- sometimes never finishes connection establishment
-#        -- prob has to do with multiple responses to offers not ging thru
-# FIXME: current issue -- sending works but recv doesn't; check both directions
+# FIXME: cf checklist/assg; run turnin
 # TODO: test TCP w\ NATs (use STUN) and between computers
 # TODO: see powerpoint and things we gave to Jeannie
 # TODO: test CrapChat with TCP
@@ -96,8 +93,8 @@ class RecvThread(Thread):
         imap = self._chump.get_imap()
         if len(to_doom) > 0:
             doomed = ','.join(to_doom)
-            print('STORE', imap.uid("STORE", doomed, '+FLAGS', '(\\Seen \\Deleted)'))
-            print('EXPUNGE', imap.expunge())
+            imap.uid("STORE", doomed, '+FLAGS', '(\\Seen \\Deleted)')
+            self.log('Expunged: ', imap.expunge())
             to_doom = []
     # Get the latest emails and parse them.
     def _sync(self):
@@ -122,14 +119,11 @@ class RecvThread(Thread):
                 # Just ignore seriously malformed messages
                 pass
             if full_message is not None and 'key' in full_message:
-                # print('GOT', full_message)
                 if full_message['key'] == '__answer':
                     self._chump.tcpdict[full_message['sender']].got_answer(full_message['body'])
-                    print('STAA', int(time()) - full_message['timestamp'])
                     self.doomed.put(uid)
                 elif full_message['key'] == '__offer':
                     self.doomed.put(uid)
-                    print('STAO', int(time()) - full_message['timestamp'])
                     if (int(time()) - full_message['timestamp']) < 60:
                         self._chump.tcpdict[full_message['sender']].got_offer(full_message['offer'])
                 else:
