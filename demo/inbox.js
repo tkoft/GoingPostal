@@ -3,11 +3,10 @@
 (function() {
 	var messagelist = null;
 	var photo = null;
-	var messageDataList = null;
+	var messageDataList = [];
 
 	function startup() {
 		messagelist = document.getElementById('messagelist');
-		messagelist.innerHTML = "Loading...";
 
 		photo = document.getElementById('photo');
 		photo.style.display = "none";
@@ -31,40 +30,58 @@
 				}
 			})
 
-			client.invoke("recv", "crapchat-photo", function(error, res, more) {
+			messagelist.innerHTML = "Loading...";
+			client.invoke("retrieve", "crapchat.unread", function(error, res, more) {
 				if (error) {
 					console.error(error);
-				} else {
-					if (res.length > 0) {
-						messageDataList += res;
-						messagelist.innerHTML = "";
-						for (var i = 0; i < res.length; i++) {
-							var button = document.createElement("button");
-							var label = document.createTextNode(res[i]["sender"]);
-
-							button.appendChild(label);
-							button.id = "button_" + i;
-							button.style.display = "block";
-							console.log(res[i]["sender"]);
-							(function(i){
-								button.addEventListener('click', function(){
-									showmessage(this.id.replace("button_", ""), res[i]["body"])
-									this.remove();
-								}, false);
-							})(i); // closure over i
-							//messagelist.removeChild(document.getElementById(this.id));
-							messagelist.appendChild(button);
-						}
-					} else {
-						messagelist.innerHTML = "No messages.";
-					}
+				} else if (res.length > 0) {
+					oldUnread = JSON.parse(res);
+					messageDataList = messageDataList.concat(oldUnread);
 				}
+				updateMessages()
 			});
+
+			messagelist.innerHTML = "Loading...";
+			client.invoke("recv", "crapchat.photo", function(error, res, more) {
+				if (error) {
+					console.error(error);
+				} else if (res.length > 0) {
+					messageDataList = messageDataList.concat(res);
+				}
+				updateMessages()
+			});
+
 		} catch (err) {
 			console.error(err);
 			alert("Failed to connect to CHUMP daemon.")
 		}
+	}
 
+	function updateMessages() {
+		if (messageDataList.length == 0) {
+			messagelist.innerHTML = "No messages.";
+		} else {
+			messagelist.innerHTML = "";
+			for (var i = 0; i < messageDataList.length; i++) {
+				var button = document.createElement("button");
+				var label = document.createTextNode(messageDataList[i]["sender"]);
+
+				button.appendChild(label);
+				button.id = "button_" + i;
+				button.style.display = "block";
+				console.log(messageDataList[i]["sender"]);
+				(function(i){
+					button.addEventListener('click', function(){
+						showmessage(this.id.replace("button_", ""), messageDataList[i]["body"])
+						this.remove();
+						messageDataList.splice(i, 1);
+						updateMessages();
+					}, false);
+				})(i); // closure over i
+				//messagelist.removeChild(document.getElementById(this.id));
+				messagelist.appendChild(button);
+			}
+		}
 	}
 
 	function showmessage(i,data) {
@@ -79,8 +96,16 @@
 	}
 
 	function teardown() {
+		//console.log("mdL " + JSON.stringify(messageDataList))
+		client.invoke("store", "crapchat.unread", JSON.stringify(messageDataList), function(error, res, more) {
+			if (error) {
+				console.error("Failed to save unread messages.");
+				alert.dialog("Failed to save unread messages.");
+			} 
+		});
 		// todo:  store unopened messages since they're already deleted from server
 	}
 	window.addEventListener('load', startup, false);
-	window.addEventListener('unload', teardown, false);
+	window.addEventListener('beforeunload', teardown, false);
 })();
+	

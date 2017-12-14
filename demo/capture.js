@@ -187,7 +187,7 @@ function preparesend() {
 	}
 
 	var data = photo.getAttribute('src');
-	client.invoke("send", "crapchat-photo", recipientslist, data, function(error, res, more) {
+	client.invoke("send", "crapchat.photo", recipientslist, data, function(error, res, more) {
 		if (error) {
 			console.error(error);
 		} else {
