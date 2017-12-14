@@ -89,7 +89,7 @@ def printTable(myDict, colList=None):
    colSize = [max(map(len,col)) for col in zip(*myList)]
    formatStr = ' | '.join(["{{:<{}}}".format(i) for i in colSize])
    myList.insert(1, ['-' * i for i in colSize]) # Seperating line
-   for item in myList: print(formatStr.format(*item))
+   # for item in myList: print(formatStr.format(*item))
 
 
 # The main command-line interface.
@@ -267,7 +267,7 @@ class OneWayConnection:
         return self._connected
     def try_send(self, message):
         message = str(len(message)).ljust(10) + message
-        print('GOAL SEND', message)
+        # print('GOAL SEND', message)
         if self._connected:
             print('ATTEMPTING SEND ', message)
             if self._agent.send(self._stream, 1, len(message), message) == len(message):
@@ -402,7 +402,7 @@ class RecvThread(Thread):
             doomed = ','.join(to_doom)
             self.log('Dooming: ', doomed)
             self.log(imap.uid("STORE", doomed, '+FLAGS', '\\Deleted'))
-            self.log(imap.uid("EXPUNGE", doomed))
+            imap.expunge()
             to_doom = []
     def sync(self):
         self.log('WILL SYNC')
