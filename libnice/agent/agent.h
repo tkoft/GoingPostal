@@ -757,7 +757,7 @@ nice_agent_set_remote_candidates (
  * @stream_id: The ID of the stream to send to
  * @component_id: The ID of the component to send to
  * @len: The length of the buffer to send
- * @buf: The buffer of data to send
+ * @buf: (transfer full): The buffer of data to send
  *
  * Sends a data payload over a stream's component.
  *
@@ -949,7 +949,7 @@ nice_agent_restart_stream (
  * @stream_id: The ID of stream
  * @component_id: The ID of the component
  * @ctx: The Glib Mainloop Context to use for listening on the component
- * @func: (scope async): The callback function to be called when data is received on
+ * @func: (scope notified): The callback function to be called when data is received on
  * the stream's component (will not be called for STUN messages that
  * should be handled by #NiceAgent itself)
  * @data: user data associated with the callback

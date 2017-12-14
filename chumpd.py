@@ -27,7 +27,7 @@ import base64
 import email
 import collections
 from operator import itemgetter, attrgetter
-
+import struct
 
 # note: you need pygobject working,
 # and Sony Ericsson's openwebrtc installed; this has to be compiled with introspection.
@@ -43,6 +43,7 @@ from operator import itemgetter, attrgetter
 #  -- one issue: libnice itself auto gets local addrs
 #  - could use: nice_agent_get_default_local_candidate ()
 
+# which change to agent.h fixed stuff?
 
 # FIXME: broke recv from email?
 # WORKS!!!! RECEIVE SUCCEEDS!
@@ -117,6 +118,7 @@ class BasicTest(TestCase):
             print('Starting...')
             gmail2.send('app', gmail3, 'M1')
             sleep(30)
+            # FIXME: n2s: can't 'send to yourself' over tcp
             # sleep(30) # Try to get a candidate... should show 'Adding offer'
             print('SHOULD SEND OFFER:')
             gmail2.send('app', gmail3, 'M2') # Send an offer
@@ -132,9 +134,14 @@ class BasicTest(TestCase):
             sleep(1)
             printTable(gmail3.recv('app'))  # recv over tcp
             # TODO: msgpack.exceptions.ExtraData
-            # gmail3.send('app', gmail2, 'M3B') # Connection established
+            gmail3.send('app', gmail2, 'M3B') # Connection established
+            gmail3.send('app', gmail2, 'M3C') # Connection established
             sleep(1)
             printTable(gmail2.recv('app'))  # recv over tcp
+            gmail2.send('app', gmail3, 'M3D') # Connection established
+            gmail2.send('app', gmail3, 'M3E') # Connection established
+            sleep(1)
+            printTable(gmail3.recv('app'))  # recv over tcp
 
     # def test_imap(self):
     #     with ChumpServer('configs/gmail3.ini') as gmail3, \
@@ -191,13 +198,27 @@ id = 0
 # TODO: lint this (typecheck?), improve/automate tests...
 # ...test TCP in apps; generally test TCP more.
 
-
+# TODO: auto recv on a schedule to get eg __answer's
 # FIXME: crash at end related to sorce ref count
 # -- I'm guessing that this has somethng to do with nicethreads?
+#    -> fixed with two changes to agent.h - which was necessary?
 
 class OneWayConnection:
     def _set_connected(self):
         self._connected = True
+    def _handle_bytes(self, buf):
+        pass
+    def read_messages(self):
+        # pass
+        # self._bytes += buf
+        if len(self._bytes) >= 10:
+            num = int(self._bytes[0:10])
+            if len(self._bytes) >= (10+num):
+                msg = self._bytes[10:10+num]
+                self._bytes = self._bytes[10+num:]
+                msg = msgpack.unpackb(base64.a85decode(msg), encoding='utf-8')
+                self._on_recv(msg)
+                self.read_messages()
     def _build_agent(self):
         if self._agent is None:
             context = GLib.MainContext.new()
@@ -211,7 +232,8 @@ class OneWayConnection:
             agent.connect('new-selected-pair-full',
                 lambda agent, m, n, c1, c2: self._set_connected())
             agent.attach_recv(stream, 1, context,
-                lambda a, m, n, sz, buf: self._on_recv(msgpack.unpackb(base64.a85decode(buf), encoding='utf-8'))
+            # apparently there's an issue with the lifetime of this???
+                lambda a, m, n, sz, buf: setattr(self, '_bytes', self._bytes + buf)
             )
             self._agent = agent
             self._stream = stream
@@ -234,7 +256,8 @@ class OneWayConnection:
         self._control = control
         self._agent = None
         self._on_recv = callback
-
+        self._bytes = ''
+        self._arr = []
 
     def has_offer(self):
         return self._offer is not None
@@ -244,8 +267,11 @@ class OneWayConnection:
         return self._offer
 
     def try_send(self, message):
+        message = str(len(message)).ljust(10) + message
         if self._connected:
-            if self._agent.send(self._stream, 1, len(message), message) > 0:
+            print('ATTEMPTING SEND ', message)
+            if self._agent.send(self._stream, 1, len(message), message) == len(message):
+                print('DID SEND')
                 return True
             else:
                 print('Error sending message!')
@@ -318,6 +344,9 @@ class TwoWayConnection:
     def try_send(self, message):
         return self._outgoing.try_send(message) \
             or self._incoming.try_send(message)
+    def read_messages(self):
+        self._incoming.read_messages()
+        self._outgoing.read_messages()
 
 class TcpDictionary(collections.defaultdict):
     def __init__(self, chump):
@@ -490,6 +519,8 @@ class ChumpServer:
             self._doomed = []
     def recv(self, key):
         self.sync()
+        for k, val in self._tcp.items():
+            val.read_messages()
         mq = [x for x in self._tcp_messages[key]]
         #     # TODO we do need to base85 b/c of unicode-y issues (workaround somehow?)
         self._tcp_messages[key] = []

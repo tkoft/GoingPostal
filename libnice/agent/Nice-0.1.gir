@@ -465,7 +465,7 @@ function to unset @func, otherwise data loss of received packets may occur.</doc
           </parameter>
           <parameter name="func"
                      transfer-ownership="none"
-                     scope="async"
+                     scope="notified"
                      closure="4">
             <doc xml:space="preserve">The callback function to be called when data is received on
 the stream's component (will not be called for STUN messages that
@@ -1413,7 +1413,7 @@ does not generate a new tie breaker.</doc>
             <doc xml:space="preserve">The length of the buffer to send</doc>
             <type name="guint" c:type="guint"/>
           </parameter>
-          <parameter name="buf" transfer-ownership="none">
+          <parameter name="buf" transfer-ownership="full">
             <doc xml:space="preserve">The buffer of data to send</doc>
             <type name="utf8" c:type="const gchar*"/>
           </parameter>
