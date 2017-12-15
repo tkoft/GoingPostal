@@ -113,3 +113,30 @@ class BasicTest(TestCase):
             data = str(uuid4())
             yahoo1.store('test-key', data)
             self.assertEqual(yahoo1.retrieve('test-key'), data)
+
+id = str(uuid4())
+
+class BenchThread(Thread):
+    def run(self):
+        global id
+        with ChumpServer('configs/gmail1.ini') as gmail2:
+                for i in range(0,20):
+                    gmail2.send(id, 'gonepostal003@gmail.com', 'L' + str(i))
+                    sleep(10)
+
+class BenchTwo(Thread):
+    def run(self):
+        global id
+        with  ChumpServer('configs/gmail3.ini') as gmail3:
+            messages = []
+            while len(messages) < 20:
+                for msg in gmail3.recv(id):
+                    print('TIME=', int(time()) - msg['timestamp'], msg['protocol'])
+                    messages.append(msg)
+                sleep(1)
+
+
+class BenchTest(TestCase):
+    def test_benchmark(self):
+        BenchTwo().start()
+        BenchThread().start()

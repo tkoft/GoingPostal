@@ -1,14 +1,3 @@
-
-
-# FIXME: cf checklist/assg; run turnin
-# TODO: test TCP w\ NATs (use STUN) and between computers
-# TODO: see powerpoint and things we gave to Jeannie
-# TODO: test CrapChat with TCP; get things to be reliable
-# TODO: make build/setup easy
-# NOTE: allowed "less secure apps" for google/yahoo; disabled spam filters
-# FIXME: 'DONE' enver gets printed?
-
-
 # CHUMPD (server for the Chen-Hansel Ulterior Messaging Protocol)
 # Exposes a zerorpc API for building social media applications over email.
 # Why? Because we can, that's why.
@@ -65,6 +54,10 @@ def main():
 # A thread for receiving email messages at a specified interval.
 # Currently this is "every 15 seconds"; for actual use, we would
 # want a larger interval, to avoid being banned from IMAP servers.
+# NOTE: GMail users may need to enable "access from less secure apps"
+# for our IMAP library to work, since we are using "normal" IMAP
+# authentication, rather than OAuth. Sadly, imaplib does not support
+# such things.
 class RecvThread(Thread):
     def __init__(self, stop_event, chump):
         super().__init__(daemon=True)
