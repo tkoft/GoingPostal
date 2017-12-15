@@ -86,7 +86,9 @@ class RecvThread(Thread):
         imap = self._chump.get_imap()
         if len(to_doom) > 0:
             doomed = ','.join(to_doom)
-            imap.uid("STORE", doomed, '+FLAGS', '(\\Seen \\Deleted)')
+            for d in to_doom:
+                self.log('Stored: ', imap.uid("STORE", str(d), '+FLAGS', 
+                "(\\Deleted)"))
             self.log('Expunged: ', imap.expunge())
             to_doom = []
     # Get the latest emails and parse them.
@@ -103,6 +105,7 @@ class RecvThread(Thread):
         offers = []
         for (mkey, mvalue) in messages:
             message = email.message_from_string(mvalue.decode())
+            print('Key:', mkey)
             uid = re.search(rb'UID\s*(\d+)', mkey).group(1).decode()
             full_message = None
             try:
@@ -251,6 +254,7 @@ class ChumpServer:
             for uid, full_message in self.queues[key].items():
                 self._recv_thread.doomed.put(uid)
                 mq.append(full_message)
+                print('QUEUE', uid, full_message)
             self.queues[key] = {}
 
             # 3. Sort by timestamp so things are at least somewhat in order:
