@@ -1,13 +1,30 @@
-Start chumpdt, the TCP version of chumpd since I can't get unix sockets to work in Electron.
+**DEMO APP - CRAPCHAT for Gone Postal Final Project**
+Gary Chen, Jason Hansel
 
-`pipenv run python3 chumpd configs/gmail3.ini ipc://$HOME/test.sock`
+This is a barebones demo app for CHUMP.  It uses its messaging capabilities to send image messages that totally aren't like Snapchat, and also persists some data on the email server like a friends list and unread messages, also through the CHUMP protocol.
 
-Run app with:
+Ensure you have chumpd started before you start the demo app.
+Also ensure you have the lastest version of nodejs (like, version 9 or so). 
+Install node dependencies with:
 
-`SOCKET=ipc://$HOME/test.socket ./node_modules/.bin/electron .`
+```
+npm install
+```
 
-If you get node version mismatch errors, update node, delete dependencies from package.json, delete the node_modules directory, and `npm install electron zeromq zerorpc`
+Then, with the same socket you specified to chumpd, run app with:
 
-Note to self: I had to change `zmq.target.mk` to remove dependency on `.a` file (for using `electron-rebuild`).
+```
+SOCKET=ipc://$HOME/test.socket ./node_modules/.bin/electron .
+```
 
-Issue: Getting occasional "routing" errors from ZeroMQ. Try to get this working with unix sockets?
+If you get node version mismatch errors, update node, delete all dependencies from package.json, delete the node_modules directory, and manually install:
+
+```
+npm install electron zeromq zerorpc
+```
+
+Electron might complain about not having libgconf-2-4 installed, so:
+```
+sudo apt install libgconf-2-4
+```
+
