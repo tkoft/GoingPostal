@@ -3,7 +3,7 @@
 # FIXME: cf checklist/assg; run turnin
 # TODO: test TCP w\ NATs (use STUN) and between computers
 # TODO: see powerpoint and things we gave to Jeannie
-# TODO: test CrapChat with TCP
+# TODO: test CrapChat with TCP; get things to be reliable
 # TODO: make build/setup easy
 # NOTE: allowed "less secure apps" for google/yahoo; disabled spam filters
 # FIXME: 'DONE' enver gets printed?

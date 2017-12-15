@@ -66,16 +66,11 @@ class OneWayConnection:
                 self._bytes += self._data.get_nowait()
             except(Empty):
                break
-        while True:
-            if len(self._bytes) >= 10:
-                num = int(self._bytes[0:10])
-                if len(self._bytes) >= (10+num):
-                    yield msgpack.unpackb(base64.a85decode(self._bytes[10:10+num]), encoding='utf-8')
-                    self._bytes = self._bytes[10+num:]
-                else:
-                    break
-            else:
-                break
+        while '\n' in self._bytes:
+            len = self._bytes.index('\n')
+            msg = self._bytes[0:len]
+            yield msgpack.unpackb(base64.a85decode(msg), encoding='utf-8')
+            self._bytes = self._bytes[len+1:]
     # Create a NiceAgent, used to handle the offer/answer exchange.
     def _state_changed(self, inst, m, n, state):
         if state == 4:
@@ -121,7 +116,7 @@ class OneWayConnection:
         return self._connected
     # Try to send a message; returns false if we're not yet connected.
     def try_send(self, message):
-        message = str(len(message)).ljust(10) + message
+        message = message + '\n'
         if self._connected:
             if self._agent.send(self._stream, 1, len(message), message) == len(message):
                 return True
@@ -144,6 +139,7 @@ class OutgoingConnection(OneWayConnection):
             raise Exception('Connection failed!')
     def set_answer(self, offer, answer):
         if offer == self._offer:
+            print('Got answer:')
             self._answer = answer
             self._agent.parse_remote_sdp(answer)
             return True
