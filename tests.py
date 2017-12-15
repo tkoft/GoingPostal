@@ -138,5 +138,7 @@ class BenchTwo(Thread):
 
 class BenchTest(TestCase):
     def test_benchmark(self):
-        BenchTwo().start()
+        t = BenchTwo()
+        t.start()
         BenchThread().start()
+        t.join()

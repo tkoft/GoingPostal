@@ -139,7 +139,6 @@ class OutgoingConnection(OneWayConnection):
             raise Exception('Connection failed!')
     def set_answer(self, offer, answer):
         if offer == self._offer:
-            print('Got answer:')
             self._answer = answer
             self._agent.parse_remote_sdp(answer)
             return True
